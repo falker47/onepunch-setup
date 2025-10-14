@@ -13,6 +13,9 @@ try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
 $DefaultPackagesUrl = 'https://raw.githubusercontent.com/falker47/onepunch-setup/main/packages.json'
 $DefaultLogDir = Join-Path $env:LOCALAPPDATA 'pc-setup\logs'
 
+# Optional embedded manifest (base64-encoded JSON). Replaced by compile.ps1 if embedding is enabled
+$EmbeddedManifestBase64 = '<#EMBED_PACKAGES_JSON#>'
+
 if (-not $PackagesUrl -or [string]::IsNullOrWhiteSpace($PackagesUrl)) {
     $PackagesUrl = $DefaultPackagesUrl
 }
@@ -79,7 +82,16 @@ function Get-Manifest {
     param(
         [Parameter(Mandatory=$true)][string]$PackagesUrl
     )
-    # Try to find packages.json in the same directory as the EXE
+    # 0) Embedded manifest (if present)
+    if ($EmbeddedManifestBase64 -and $EmbeddedManifestBase64 -notlike '<#*#>') {
+        try {
+            $bytes = [Convert]::FromBase64String($EmbeddedManifestBase64)
+            $raw = [System.Text.Encoding]::UTF8.GetString($bytes)
+            return $raw | ConvertFrom-Json
+        } catch { }
+    }
+
+    # 1) Try to find packages.json in the same directory as the EXE
     $exePath = [System.Reflection.Assembly]::GetExecutingAssembly().Location
     $localPath = if ($exePath) { Join-Path (Split-Path -Parent $exePath) 'packages.json' } else { 'packages.json' }
     
@@ -88,6 +100,7 @@ function Get-Manifest {
         $raw = Get-Content -LiteralPath $localPath -Raw -Encoding UTF8
         return $raw | ConvertFrom-Json
     }
+    # 2) Remote fallback
     Write-Verbose "Manifest locale non trovato. Scarico da: $PackagesUrl"
     $tmp = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), "packages.json")
     try {
@@ -250,7 +263,6 @@ try {
             <Button x:Name="BtnSelectAll" Content="Select All" Width="90" Margin="0,0,8,0"/>
             <Button x:Name="BtnDeselectAll" Content="Deselect All" Width="110" Margin="0,0,8,0"/>
             <Button x:Name="BtnInstall" Content="Install" Width="90" IsEnabled="False"/>
-            <Button x:Name="BtnCancel" Content="Cancel" Width="80" Margin="8,0,0,0"/>
         </StackPanel>
         <ScrollViewer VerticalScrollBarVisibility="Auto">
             <StackPanel x:Name="CategoriesPanel" Margin="8"/>
@@ -270,7 +282,6 @@ try {
     $window.FindName("BtnSelectAll") | ForEach-Object { $controls.BtnSelectAll = $_ }
     $window.FindName("BtnDeselectAll") | ForEach-Object { $controls.BtnDeselectAll = $_ }
     $window.FindName("BtnInstall") | ForEach-Object { $controls.BtnInstall = $_ }
-    $window.FindName("BtnCancel") | ForEach-Object { $controls.BtnCancel = $_ }
     $window.FindName("CategoriesPanel") | ForEach-Object { $controls.CategoriesPanel = $_ }
 
     # Initialize toggles with CLI values
@@ -396,8 +407,6 @@ try {
     $null = $controls.BtnSelectAll.Add_Click({ foreach ($c in $packageCheckBoxes) { $c.IsChecked = $true } & $updateInstallButton })
     $null = $controls.BtnDeselectAll.Add_Click({ foreach ($c in $packageCheckBoxes) { $c.IsChecked = $false } & $updateInstallButton })
 
-    # Cancel
-    $null = $controls.BtnCancel.Add_Click({ $window.Close() })
 
     # Install click handler
     $null = $controls.BtnInstall.Add_Click({

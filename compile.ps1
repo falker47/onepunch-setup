@@ -18,11 +18,15 @@ This script will:
 
 param(
     [string]$Name = "onepunch-setup",
-    [string]$Icon = ".\assets\app.ico"
+    [string]$Icon = ".\\assets\\app.ico",
+    [switch]$EmbedManifest
 )
 
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+# Default EmbedManifest to true when not explicitly provided
+if (-not $PSBoundParameters.ContainsKey('EmbedManifest')) { $EmbedManifest = $true }
 
 # Ensure ps2exe is available
 if (-not (Get-Module -ListAvailable -Name ps2exe)) {
@@ -46,13 +50,34 @@ try {
     }
 } catch { }
 
+# Prepare source path (optionally with embedded manifest)
+$source = Join-Path $PSScriptRoot 'setup.ps1'
+$tempSource = $null
+if ($EmbedManifest) {
+    $pkgPath = Join-Path $PSScriptRoot 'packages.json'
+    if (Test-Path $pkgPath) {
+        $json = Get-Content -LiteralPath $pkgPath -Raw -Encoding UTF8
+        $b64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($json))
+        $tempSource = Join-Path $env:TEMP ('setup_embed_' + [Guid]::NewGuid().ToString() + '.ps1')
+        $content = Get-Content -LiteralPath $source -Raw -Encoding UTF8
+        $content = $content.Replace('<#EMBED_PACKAGES_JSON#>', $b64)
+        $content | Out-File -LiteralPath $tempSource -Encoding UTF8
+        $source = $tempSource
+        Write-Host 'Embedded packages.json into setup.ps1 for this build.' -ForegroundColor Green
+    } else {
+        Write-Host 'Embed requested but packages.json not found. Skipping embedding.' -ForegroundColor Yellow
+    }
+}
+
 # Build
 if (Test-Path $Icon) {
-    Invoke-ps2exe .\setup.ps1 $outFile -noConsole -requireAdmin -iconFile $Icon
+    Invoke-ps2exe $source $outFile -noConsole -requireAdmin -iconFile $Icon
 } else {
     Write-Host ("Icon not found at {0}, building without icon..." -f $Icon) -ForegroundColor Yellow
-    Invoke-ps2exe .\setup.ps1 $outFile -noConsole -requireAdmin
+    Invoke-ps2exe $source $outFile -noConsole -requireAdmin
 }
+
+if ($tempSource -and (Test-Path $tempSource)) { Remove-Item -LiteralPath $tempSource -Force -ErrorAction SilentlyContinue }
 
 Write-Host "Done." -ForegroundColor Green
 
