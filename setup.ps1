@@ -846,7 +846,13 @@ try {
             
             # Non-blocking winget installation with real-time progress tracking
             try {
-                $wingetArgs = @('install','--id', $pkg.id,'--accept-package-agreements','--accept-source-agreements')
+                # Determine timeout based on package size/complexity
+                $maxWaitTime = 300000 # 5 minutes default
+                if ($pkg.id -match 'Spotify|Blender|VisualStudio|Docker') {
+                    $maxWaitTime = 600000 # 10 minutes for large packages
+                }
+                
+                $wingetArgs = @('install','--id', $pkg.id,'--accept-package-agreements','--accept-source-agreements','--silent')
                 $psi = New-Object System.Diagnostics.ProcessStartInfo
                 $psi.FileName = 'winget'
                 $psi.Arguments = ($wingetArgs -join ' ')
@@ -866,9 +872,8 @@ try {
                 $progressPercent = 0
                 $lastUpdate = Get-Date
                 $startTime = Get-Date
-                $estimatedDuration = 30000 # 30 seconds default estimate
+                $estimatedDuration = 60000 # 60 seconds default estimate for large packages
                 $realProgressFound = $false
-                $maxWaitTime = 300000 # 5 minutes maximum wait
                 
                 # Non-blocking wait with simulated progress based on time
                 while (-not $proc.HasExited) {
@@ -963,7 +968,8 @@ try {
                 
                 # Check if process was killed due to timeout
                 if ($elapsedMs -gt $maxWaitTime) {
-                    $result = [pscustomobject]@{ id=$pkg.id; name=$pkg.name; status='failed'; startedAt=$started.ToString('s'); durationMs=$dur; errorMessage='Installation timeout (5 minutes)' }
+                    $timeoutMinutes = [math]::Round($maxWaitTime / 60000, 1)
+                    $result = [pscustomobject]@{ id=$pkg.id; name=$pkg.name; status='failed'; startedAt=$started.ToString('s'); durationMs=$dur; errorMessage="Installation timeout ($timeoutMinutes minutes)" }
                     if ($row) { 
                         $row.progress.IsIndeterminate = $false
                         $row.progress.Value = 0

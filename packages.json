@@ -49,7 +49,7 @@
         { "name": "Node.js LTS", "id": "OpenJS.NodeJS.LTS", "selected": false },
         { "name": "Docker Desktop", "id": "Docker.DockerDesktop", "selected": false },
         { "name": "Postman", "id": "Postman.Postman", "selected": false },
-        { "name": "Cursor", "manual": true, "url": "https://cursor.sh", "selected": false }
+        { "name": "Cursor", "manual": true, "url": "https://api2.cursor.sh/updates/download/golden/win32-x64/cursor/1.7", "selected": false }
       ]
     },
     "Gaming": {
@@ -57,14 +57,13 @@
       "packages": [
         { "name": "Steam", "id": "Valve.Steam", "selected": false },
         { "name": "Epic Games Launcher", "id": "EpicGames.EpicGamesLauncher", "selected": false },
-        { "name": "Spotify", "id": "Spotify.Spotify", "selected": false },
         { "name": "Vortex", "id": "NexusMods.Vortex", "selected": false }
       ]
     },
     "Media": {
       "description": "Creazione e editing multimediale",
       "packages": [
-        { "name": "GIMP", "id": "GIMP.GIMP", "selected": false },
+        { "name": "GIMP", "manual": true, "url": "https://download.gimp.org/gimp/v3.0/windows/gimp-3.0.6-setup-1.exe", "selected": false },
         { "name": "OBS Studio", "id": "OBSProject.OBSStudio", "selected": false },
         { "name": "Audacity", "id": "Audacity.Audacity", "selected": false },
         { "name": "Blender", "id": "BlenderFoundation.Blender", "selected": false }
