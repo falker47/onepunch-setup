@@ -1,0 +1,76 @@
+{
+  "categories": {
+    "Browser": {
+      "description": "Scegli un browser (si consiglia di installarne solo uno)",
+      "packages": [
+        { "name": "Brave Browser", "id": "BraveSoftware.BraveBrowser", "selected": true },
+        { "name": "Google Chrome", "id": "Google.Chrome", "selected": false },
+        { "name": "Mozilla Firefox", "id": "Mozilla.Firefox", "selected": false }
+      ]
+    },
+    "Base": {
+      "description": "Strumenti essenziali per tutti",
+      "packages": [
+        { "name": "7-Zip", "id": "7zip.7zip", "selected": true },
+        { "name": "VLC Media Player", "id": "VideoLAN.VLC", "selected": true },
+        { "name": "Notepad++", "id": "Notepad++.Notepad++", "selected": false },
+        { "name": "Revo Uninstaller", "id": "RevoUninstaller.RevoUninstaller", "selected": false },
+        { "name": "LibreOffice", "id": "TheDocumentFoundation.LibreOffice", "selected": false },
+        { "name": "WinRAR", "id": "RARLab.WinRAR", "selected": false }
+      ]
+    },
+    "Utilities": {
+      "description": "Utilità di sistema e produttività",
+      "packages": [
+        { "name": "ShareX", "id": "ShareX.ShareX", "selected": true },
+        { "name": "WizTree", "id": "AntibodySoftware.WizTree", "selected": true },
+        { "name": "PowerToys", "id": "Microsoft.PowerToys", "selected": true },
+        { "name": "Patch My PC", "id": "PatchMyPC.PatchMyPC", "selected": false },
+        { "name": "Everything", "id": "voidtools.Everything", "selected": true },
+        { "name": "Espanso", "id": "Espanso.Espanso", "selected": false },
+        { "name": "pCloud", "id": "pCloudAG.pCloudDrive", "selected": false }
+      ]
+    },
+    "Communication": {
+      "description": "App di comunicazione e messaggistica",
+      "packages": [
+        { "name": "WhatsApp", "id": "WhatsApp.WhatsApp", "selected": true },
+        { "name": "Telegram", "id": "Telegram.TelegramDesktop", "selected": false },
+        { "name": "Discord", "id": "Discord.Discord", "selected": false },
+        { "name": "Zoom", "id": "Zoom.Zoom", "selected": false }
+      ]
+    },
+    "Dev": {
+      "description": "Ambiente di sviluppo",
+      "packages": [
+        { "name": "Visual Studio Code", "id": "Microsoft.VisualStudioCode", "selected": true },
+        { "name": "Git", "id": "Git.Git", "selected": true },
+        { "name": "Python 3", "id": "Python.Python.3.12", "selected": true },
+        { "name": "Node.js LTS", "id": "OpenJS.NodeJS.LTS", "selected": false },
+        { "name": "Docker Desktop", "id": "Docker.DockerDesktop", "selected": false },
+        { "name": "Postman", "id": "Postman.Postman", "selected": false },
+        { "name": "Cursor", "manual": true, "url": "https://cursor.sh", "selected": false }
+      ]
+    },
+    "Gaming": {
+      "description": "Programmi per il gaming",
+      "packages": [
+        { "name": "Steam", "id": "Valve.Steam", "selected": false },
+        { "name": "Epic Games Launcher", "id": "EpicGames.EpicGamesLauncher", "selected": false },
+        { "name": "Spotify", "id": "Spotify.Spotify", "selected": false },
+        { "name": "Vortex", "id": "NexusMods.Vortex", "selected": false }
+      ]
+    },
+    "Media": {
+      "description": "Creazione e editing multimediale",
+      "packages": [
+        { "name": "GIMP", "id": "GIMP.GIMP", "selected": false },
+        { "name": "OBS Studio", "id": "OBSProject.OBSStudio", "selected": false },
+        { "name": "Audacity", "id": "Audacity.Audacity", "selected": false },
+        { "name": "Blender", "id": "BlenderFoundation.Blender", "selected": false }
+      ]
+    }
+  }
+}
+
+

@@ -1,0 +1,27 @@
+# Logs
+logs/
+*.log
+
+# EXE files
+*.exe
+
+# PowerShell execution policy
+*.ps1.bak
+
+# Temporary files
+*.tmp
+*.temp
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
