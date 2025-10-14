@@ -1,54 +1,48 @@
 # Onepunch-setup (Windows One‑Click Setup)
 
-Un tool Windows che permette di selezionare categorie di software e singole app da una GUI, poi le installa tramite **winget**. Il tool legge il catalogo da **packages.json** (locale prima, fallback remoto), logga tutto e mostra un riepilogo finale.
+Strumento Windows “one‑click setup” per scegliere categorie e app da una GUI e installarle tramite **winget**. Il catalogo è `packages.json` (locale prima, remoto di fallback). Log dettagliati e riepilogo finale.
 
-## Quick Start
+## Requisiti
+- Windows 10/11
+- PowerShell 5.1+ (consigliato PowerShell 7)
+- Amministratore
+- Winget (App Installer)
 
-1) Right-click `setup.ps1` → Run with PowerShell (as Administrator).
-2) Pick categories and apps in the GUI.
-3) Click Install. Review summary; open logs if needed.
-
-## Features
-
-- Local‑first `packages.json` (remote fallback URL is configurable).
-- Idempotent installs via winget (skips already installed).
-- Optional toggles: Dry Run, Enable WSL, Auto Reboot.
-- Logs transcript and JSON summary under `%LOCALAPPDATA%\pc-setup\logs`.
-
-## CLI Options
+## Avvio rapido (script)
+```powershell
+# Esegui in una PowerShell come Amministratore nella cartella del progetto
+powershell -ExecutionPolicy Bypass -File .\setup.ps1
+```
+Opzioni:
 ```powershell
 ./setup.ps1 [-DryRun] [-EnableWSL] [-AutoReboot] [-PackagesUrl <url>] [-LogDir <path>]
 ```
 
-## Remote manifest fallback
-- If `packages.json` is missing next to `setup.ps1`, the script downloads from the default URL.
+## Manifest remoto (fallback)
+Se `packages.json` non è presente accanto allo script, il manifest sarà scaricato da:
+`https://raw.githubusercontent.com/falker47/onepunch-setup/main/packages.json`
 
-## Build EXE (optional)
+## Build EXE (opzionale)
 ```powershell
 if (-not (Get-Module -ListAvailable ps2exe)) { Install-Module ps2exe -Scope CurrentUser -Force }
 Invoke-ps2exe .\setup.ps1 .\Setup-Windows.exe -noConsole -requireAdmin -iconFile .\assets\app.ico
-```
-
-Or simply run the helper:
-```powershell
+# Oppure
 ./build.ps1
 ```
 
-## GitHub Setup
+## Funzionalità
+- GUI WPF con categorie espandibili e checkbox per i pacchetti
+- Seleziona/Deseleziona categoria (tri‑state), Select All/Deselect All
+- Idempotenza (skip se già installati), logging e JSON summary
+- Toggle: Dry Run, Enable WSL, Auto Reboot
 
-1. **Create repository**: Create a new GitHub repo named `pc-setup`
-2. **Upload files**: Upload all files except `*.exe` and `logs/` folder
-3. **Update URL**: Edit `setup.ps1` line 13 to match your GitHub username:
-   ```powershell
-   $DefaultPackagesUrl = 'https://raw.githubusercontent.com/YOUR_USERNAME/pc-setup/main/packages.json'
-   ```
-4. **Test**: Run the script without local `packages.json` to test remote loading
+## Modifica catalogo
+`packages.json` supporta:
+- winget: `{ "name": "App", "id": "Vendor.App", "selected": true }`
+- manuale: `{ "name": "App", "manual": true, "url": "https://…" }`
 
-## Customization
-
-Edit `packages.json` to add/remove software categories and packages. Each package needs:
-- `name`: Display name
-- `id`: winget package ID (find with `winget search <name>`)
-- `selected`: true/false for default selection
+## Link utili
+- Repo: https://github.com/falker47/onepunch-setup
+- Manifest remoto: https://raw.githubusercontent.com/falker47/onepunch-setup/main/packages.json
 
 

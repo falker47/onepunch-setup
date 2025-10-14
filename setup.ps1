@@ -10,7 +10,7 @@ $ErrorActionPreference = 'Stop'
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
 
 # Constants
-$DefaultPackagesUrl = 'https://raw.githubusercontent.com/Falker47/pc-setup/main/packages.json'
+$DefaultPackagesUrl = 'https://raw.githubusercontent.com/falker47/onepunch-setup/main/packages.json'
 $DefaultLogDir = Join-Path $env:LOCALAPPDATA 'pc-setup\logs'
 
 if (-not $PackagesUrl -or [string]::IsNullOrWhiteSpace($PackagesUrl)) {
@@ -240,7 +240,7 @@ try {
     <DockPanel LastChildFill="True">
         <StatusBar DockPanel.Dock="Bottom">
             <StatusBarItem>
-                <TextBlock x:Name="StatusText" Text="Manifest caricato"/>
+                <TextBlock x:Name="StatusText" Text=""/>
             </StatusBarItem>
         </StatusBar>
         <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="8" HorizontalAlignment="Right" >
@@ -356,16 +356,12 @@ try {
         # Localize references to avoid late-binding closure issues
         # Store context on master for event handlers
         $catCheck.Tag = [pscustomobject]@{ Panel=$catPanel; Master=$catCheck }
+        $catCheck.IsThreeState = $true
 
-        # Wire category checkbox to children using sender context
-        $null = $catCheck.Add_Checked({ param($sender,$e)
+        # Click handler to enforce two-state toggle; indeterminate is only set by child changes
+        $null = $catCheck.Add_Click({ param($sender,$e)
             $ctx = $sender.Tag
-            foreach ($child in $ctx.Panel.Children) {
-                if ($child -is [System.Windows.Controls.CheckBox] -and $child -ne $ctx.Master) {
-                    $child.IsChecked = $true
-                }
-            }
-            # Recompute master tri-state
+            # Determine current child selection
             $total = 0; $checked = 0
             foreach ($child in $ctx.Panel.Children) {
                 if ($child -is [System.Windows.Controls.CheckBox] -and $child -ne $ctx.Master) {
@@ -373,31 +369,16 @@ try {
                     if ($child.IsChecked) { $checked++ }
                 }
             }
-            $sender.IsThreeState = $true
-            if ($checked -eq 0) { $sender.IsChecked = $false }
-            elseif ($checked -eq $total) { $sender.IsChecked = $true }
-            else { $sender.IsChecked = $null }
-            & $updateInstallButton
-        })
-        $null = $catCheck.Add_Unchecked({ param($sender,$e)
-            $ctx = $sender.Tag
+            # If not all selected, select all; else deselect all
+            $selectAll = $checked -lt $total
             foreach ($child in $ctx.Panel.Children) {
                 if ($child -is [System.Windows.Controls.CheckBox] -and $child -ne $ctx.Master) {
-                    $child.IsChecked = $false
+                    $child.IsChecked = $selectAll
                 }
             }
-            # Recompute master tri-state
-            $total = 0; $checked = 0
-            foreach ($child in $ctx.Panel.Children) {
-                if ($child -is [System.Windows.Controls.CheckBox] -and $child -ne $ctx.Master) {
-                    $total++
-                    if ($child.IsChecked) { $checked++ }
-                }
-            }
-            $sender.IsThreeState = $true
-            if ($checked -eq 0) { $sender.IsChecked = $false }
-            elseif ($checked -eq $total) { $sender.IsChecked = $true }
-            else { $sender.IsChecked = $null }
+            # Set master strictly to true/false to avoid cycling
+            $sender.IsChecked = [bool]$selectAll
+            $e.Handled = $true
             & $updateInstallButton
         })
 

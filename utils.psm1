@@ -93,15 +93,23 @@ function Test-Manifest {
         [Parameter(Mandatory=$true)]$Manifest
     )
     if (-not $Manifest.categories) { throw 'Manifest non valido: manca la proprietà categories' }
-    foreach ($kvp in $Manifest.categories.GetEnumerator()) {
-        $categoryName = $kvp.Key
-        $category = $kvp.Value
+    foreach ($categoryName in $Manifest.categories.PSObject.Properties.Name) {
+        $category = $Manifest.categories.$categoryName
         if (-not $category.packages -or $category.packages.Count -eq 0) {
             throw ("Categoria '{0}' non valida: packages è vuoto" -f $categoryName)
         }
         foreach ($pkg in $category.packages) {
-            if (-not $pkg.name -or -not $pkg.id) {
-                throw ("Pacchetto in '{0}' non valido: 'name' e 'id' sono richiesti" -f $categoryName)
+            if (-not $pkg.name) { throw ("Pacchetto in '{0}' non valido: 'name' è richiesto" -f $categoryName) }
+            $isManual = $false
+            if ($null -ne $pkg.PSObject.Properties['manual']) { $isManual = [bool]$pkg.manual }
+            if ($isManual) {
+                if (-not $pkg.url -or [string]::IsNullOrWhiteSpace([string]$pkg.url)) {
+                    throw ("Pacchetto manuale '{0}' in '{1}' non valido: 'url' è richiesto" -f $pkg.name, $categoryName)
+                }
+            } else {
+                if (-not $pkg.id -or [string]::IsNullOrWhiteSpace([string]$pkg.id)) {
+                    throw ("Pacchetto in '{0}' non valido: 'id' è richiesto (o manual=true con url)" -f $categoryName)
+                }
             }
         }
     }
@@ -141,7 +149,7 @@ function Install-Package {
         if ($DryRun) {
             return [pscustomobject]@{ id=$Id; name=$Name; status='installed'; startedAt=$started.ToString('s'); durationMs=0; errorMessage=$null; dryRun=$true }
         }
-        $wingetArgs = @('install','--id', $Id,'--accept-package-agreements','--accept-source-agreements','-h','0')
+        $wingetArgs = @('install','--id', $Id,'--accept-package-agreements','--accept-source-agreements','--silent')
         $proc = Start-Process -FilePath 'winget' -ArgumentList $wingetArgs -Wait -PassThru -NoNewWindow
         $exit = $proc.ExitCode
         $dur = [int]((Get-Date) - $started).TotalMilliseconds
@@ -167,6 +175,7 @@ function Write-Summary {
     $counts = [ordered]@{
         installed = ($RunState.results | Where-Object { $_.status -eq 'installed' }).Count
         already_present = ($RunState.results | Where-Object { $_.status -eq 'already_present' }).Count
+        manual = ($RunState.results | Where-Object { $_.status -eq 'manual' }).Count
         failed = ($RunState.results | Where-Object { $_.status -eq 'failed' }).Count
     }
     $summary = [ordered]@{
@@ -178,7 +187,7 @@ function Write-Summary {
         counts = $counts
         results = $RunState.results
     }
-    ($summary | ConvertTo-Json -Depth 10 -Compress:$false) | Out-File -FilePath $summaryPath -Encoding utf8
+    ($summary | ConvertTo-Json -Depth 10) | Out-File -FilePath $summaryPath -Encoding utf8
     Write-Host ("Sommario scritto in: {0}" -f $summaryPath) -ForegroundColor Green
     return [pscustomobject]$counts
 }
