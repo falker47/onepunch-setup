@@ -47,7 +47,12 @@ function Start-AdminElevation {
         }
     }
 
-    Start-Process -FilePath $psExe -Verb RunAs -ArgumentList $argsList | Out-Null
+    # Only pass ArgumentList if it has content
+    if ($argsList.Count -gt 0) {
+        Start-Process -FilePath $psExe -Verb RunAs -ArgumentList $argsList | Out-Null
+    } else {
+        Start-Process -FilePath $psExe -Verb RunAs | Out-Null
+    }
     exit 0
 }
 
@@ -571,7 +576,13 @@ try {
             $anyVisible = $false
             foreach ($child in $node.Panel.Children) {
                 if ($child -is [System.Windows.Controls.CheckBox] -and $child -ne $node.Panel.Children[0].Children[0]) {
-                    $text = [string]$child.Content
+                    # Get text from TextBlock content properly
+                    $textBlock = $child.Content
+                    if ($textBlock -is [System.Windows.Controls.TextBlock]) {
+                        $text = $textBlock.Text
+                    } else {
+                        $text = [string]$textBlock
+                    }
                     $match = ($q -eq '' -or $text.ToLowerInvariant().Contains($q))
                     $child.Visibility = if ($match) { 'Visible' } else { 'Collapsed' }
                     if ($match) { $anyVisible = $true }
