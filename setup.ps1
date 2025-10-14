@@ -665,11 +665,11 @@ try {
     # Install click handler
     $null = $controls.BtnInstall.Add_Click({
         $controls.BtnInstall.IsEnabled = $false
-        $controls.StatusText.Text = 'Installazione in corso…'
+        $controls.StatusText.Text = 'Installing…'
 
         $selectedPackages = @()
         foreach ($c in $packageCheckBoxes) {
-            if ($c.IsChecked) { $selectedPackages += $c.Tag }
+            if ($c.IsChecked -and $c.Tag -and $c.Tag.PSObject.Properties['Pkg']) { $selectedPackages += $c.Tag.Pkg }
         }
 
         $runState = [ordered]@{
@@ -684,6 +684,63 @@ try {
             try { Enable-WSLFeatures } catch { Write-Host $_ -ForegroundColor Yellow }
         }
 
+        # Build a dedicated progress window with rows: name | per-item progress | status icon
+        $progressXaml = @"
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Installing packages" Height="540" Width="720" WindowStartupLocation="CenterScreen" Background="{DynamicResource App.Background}" Foreground="{DynamicResource App.Text}">
+  <Border Background="{DynamicResource App.Card}" BorderBrush="{DynamicResource App.Border}" BorderThickness="1" Margin="12" Padding="8">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+      <StackPanel x:Name="RowsPanel"/>
+    </ScrollViewer>
+  </Border>
+</Window>
+"@
+        $pr = New-Object System.Xml.XmlNodeReader ([xml]$progressXaml)
+        $progressWindow = [Windows.Markup.XamlReader]::Load($pr)
+        $rowsPanel = $progressWindow.FindName('RowsPanel')
+
+        # Ensure theme brushes are available in this window
+        foreach ($k in @('App.Background','App.Card','App.Border','App.Text','App.MutedText','App.Primary','App.PrimaryHover','App.PrimaryText')) {
+            if ($window.Resources.Contains($k)) {
+                if ($progressWindow.Resources.Contains($k)) { $null = $progressWindow.Resources.Remove($k) }
+                $null = $progressWindow.Resources.Add($k, $window.Resources[$k])
+            }
+        }
+
+        $rowControls = @()
+        foreach ($pkg in $selectedPackages) {
+            $grid = New-Object System.Windows.Controls.Grid
+            $grid.Margin = '0,6,0,6'
+            $grid.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width='*' })) | Out-Null
+            $grid.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width='200' })) | Out-Null
+            $grid.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width='40' })) | Out-Null
+
+            $lbl = New-Object System.Windows.Controls.TextBlock
+            $lbl.Text = [string]$pkg.name
+            $lbl.TextWrapping = 'Wrap'
+            $lbl.Foreground = $progressWindow.Resources['App.Text']
+            [System.Windows.Controls.Grid]::SetColumn($lbl,0)
+
+            $pbi = New-Object System.Windows.Controls.ProgressBar
+            $pbi.Minimum = 0; $pbi.Maximum = 100; $pbi.Height = 14; $pbi.Margin = '8,0,8,0'
+            [System.Windows.Controls.Grid]::SetColumn($pbi,1)
+
+            $ico = New-Object System.Windows.Controls.TextBlock
+            $ico.Text = '⏳'
+            $ico.HorizontalAlignment = 'Center'
+            $ico.Foreground = $progressWindow.Resources['App.Text']
+            [System.Windows.Controls.Grid]::SetColumn($ico,2)
+
+            $grid.Children.Add($lbl) | Out-Null
+            $grid.Children.Add($pbi) | Out-Null
+            $grid.Children.Add($ico) | Out-Null
+            $rowsPanel.Children.Add($grid) | Out-Null
+            $rowControls += [pscustomobject]@{ name=$pkg.name; id=$pkg.id; progress=$pbi; icon=$ico }
+        }
+
+        $null = $progressWindow.Show()
+
         $total = [double]($selectedPackages.Count)
         $i = 0
         foreach ($pkg in $selectedPackages) {
@@ -691,6 +748,15 @@ try {
             $pct = [math]::Round(($i/$total)*100)
             $controls.Prg.Value = $pct
             $controls.PrgItem.Value = 0
+            $row = $rowControls | Where-Object { $_.name -eq $pkg.name }
+            
+            # Update UI immediately for this package
+            if ($row) {
+                $row.progress.IsIndeterminate = $true
+                $row.icon.Text = '⏳'
+            }
+            $progressWindow.Dispatcher.Invoke({}, 'Background')
+            
             $isManual = $false
             if ($null -ne $pkg.PSObject.Properties['manual']) { $isManual = [bool]$pkg.manual }
             if ($isManual) {
@@ -701,33 +767,125 @@ try {
                     }
                     $dur = [int]((Get-Date) - $started).TotalMilliseconds
                     $runState.results += [pscustomobject]@{ id=$null; name=$pkg.name; status='manual'; startedAt=$started.ToString('s'); durationMs=$dur; url=$pkg.url }
+                    if ($row) { 
+                        $row.progress.IsIndeterminate = $false
+                        $row.progress.Value = 100
+                        $row.icon.Text = '📝'
+                    }
                 } catch {
                     $dur = [int]((Get-Date) - $started).TotalMilliseconds
                     $runState.results += [pscustomobject]@{ id=$null; name=$pkg.name; status='failed'; startedAt=$started.ToString('s'); durationMs=$dur; errorMessage=$_.Exception.Message; url=$pkg.url }
+                    if ($row) { 
+                        $row.progress.IsIndeterminate = $false
+                        $row.progress.Value = 0
+                        $row.icon.Text = '❌'
+                    }
                 }
+                $progressWindow.Dispatcher.Invoke({}, 'Background')
                 continue
             }
-            # Per-package progress: show indeterminate briefly while installing
-            $controls.PrgItem.IsIndeterminate = $true
-            $controls.StatusText.Text = "Installing: $($pkg.name)"
-            $result = Install-Package -Id $pkg.id -Name $pkg.name -DryRun:$runState.dryRun
-            $controls.PrgItem.IsIndeterminate = $false
-            $controls.PrgItem.Value = 100
-            $runState.results += $result
+            
+            # Guard against empty/missing id
+            if ([string]::IsNullOrWhiteSpace([string]$pkg.id)) {
+                $started = Get-Date
+                $dur = [int]((Get-Date) - $started).TotalMilliseconds
+                $runState.results += [pscustomobject]@{ id=$null; name=$pkg.name; status='failed'; startedAt=$started.ToString('s'); durationMs=$dur; errorMessage='Missing winget id' }
+                if ($row) { 
+                    $row.progress.IsIndeterminate = $false
+                    $row.progress.Value = 0
+                    $row.icon.Text = '❌'
+                }
+                $progressWindow.Dispatcher.Invoke({}, 'Background')
+                continue
+            }
+            
+            # Check if already installed first
+            $started = Get-Date
+            if (Test-IsInstalled -Id $pkg.id) {
+                $dur = [int]((Get-Date) - $started).TotalMilliseconds
+                $result = [pscustomobject]@{ id=$pkg.id; name=$pkg.name; status='already_present'; startedAt=$started.ToString('s'); durationMs=$dur; errorMessage=$null; badge='Already installed' }
+                $runState.results += $result
+                if ($row) { 
+                    $row.progress.IsIndeterminate = $false
+                    $row.progress.Value = 100
+                    $row.icon.Text = '✅'
+                }
+                $progressWindow.Dispatcher.Invoke({}, 'Background')
+                continue
+            }
+            
+            # Dry run check
+            if ($runState.dryRun) {
+                $dur = [int]((Get-Date) - $started).TotalMilliseconds
+                $result = [pscustomobject]@{ id=$pkg.id; name=$pkg.name; status='installed'; startedAt=$started.ToString('s'); durationMs=$dur; errorMessage=$null; dryRun=$true }
+                $runState.results += $result
+                if ($row) { 
+                    $row.progress.IsIndeterminate = $false
+                    $row.progress.Value = 100
+                    $row.icon.Text = '✅'
+                }
+                $progressWindow.Dispatcher.Invoke({}, 'Background')
+                continue
+            }
+            
+            # Non-blocking winget installation with real-time updates
+            try {
+                $wingetArgs = @('install','--id', $pkg.id,'--accept-package-agreements','--accept-source-agreements','--silent')
+                $psi = New-Object System.Diagnostics.ProcessStartInfo
+                $psi.FileName = 'winget'
+                $psi.Arguments = ($wingetArgs -join ' ')
+                $psi.UseShellExecute = $false
+                $psi.RedirectStandardOutput = $true
+                $psi.RedirectStandardError = $true
+                $psi.CreateNoWindow = $true
+                
+                $proc = New-Object System.Diagnostics.Process
+                $proc.StartInfo = $psi
+                $proc.Start() | Out-Null
+                
+                # Non-blocking wait with UI updates
+                while (-not $proc.HasExited) {
+                    $progressWindow.Dispatcher.Invoke({}, 'Background')
+                    Start-Sleep -Milliseconds 150
+                }
+                
+                $exit = $proc.ExitCode
+                $dur = [int]((Get-Date) - $started).TotalMilliseconds
+                
+                if ($exit -eq 0) {
+                    $result = [pscustomobject]@{ id=$pkg.id; name=$pkg.name; status='installed'; startedAt=$started.ToString('s'); durationMs=$dur; errorMessage=$null }
+                    if ($row) { 
+                        $row.progress.IsIndeterminate = $false
+                        $row.progress.Value = 100
+                        $row.icon.Text = '✅'
+                    }
+                } else {
+                    $result = [pscustomobject]@{ id=$pkg.id; name=$pkg.name; status='failed'; startedAt=$started.ToString('s'); durationMs=$dur; errorMessage=("ExitCode {0}" -f $exit) }
+                    if ($row) { 
+                        $row.progress.IsIndeterminate = $false
+                        $row.progress.Value = 0
+                        $row.icon.Text = '❌'
+                    }
+                }
+                $runState.results += $result
+                
+            } catch {
+                $dur = [int]((Get-Date) - $started).TotalMilliseconds
+                $result = [pscustomobject]@{ id=$pkg.id; name=$pkg.name; status='failed'; startedAt=$started.ToString('s'); durationMs=$dur; errorMessage=$_.Exception.Message }
+                $runState.results += $result
+                if ($row) { 
+                    $row.progress.IsIndeterminate = $false
+                    $row.progress.Value = 0
+                    $row.icon.Text = '❌'
+                }
+            }
+            
+            # Force UI update after each package
+            $progressWindow.Dispatcher.Invoke({}, 'Background')
         }
 
         $counts = Write-Summary -RunState $runState -LogDir $LogDir
-
-        $controls.StatusText.Text = 'Completato'
-
-        $message = "Installati: $($counts.installed)\nGià presenti: $($counts.already_present)\nFalliti: $($counts.failed)\n\nAprire la cartella log?"
-        $res = [System.Windows.MessageBox]::Show($message, 'Onepunch-setup - Sommario', 'YesNo', 'Information')
-        if ($res -eq 'Yes') { Start-Process explorer.exe $LogDir }
-
-        if ($runState.autoReboot -and -not $runState.dryRun) {
-            $r = [System.Windows.MessageBox]::Show('Riavviare ora il computer?','Auto Reboot','YesNo','Question')
-            if ($r -eq 'Yes') { Restart-Computer -Force }
-        }
+        $controls.StatusText.Text = 'Completed'
     })
 
     # Window close prompt
