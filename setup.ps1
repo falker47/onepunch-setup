@@ -84,11 +84,11 @@ function Get-Manifest {
     $localPath = if ($exePath) { Join-Path (Split-Path -Parent $exePath) 'packages.json' } else { 'packages.json' }
     
     if (Test-Path $localPath) {
-        Write-Host "Carico manifest da file locale: $localPath" -ForegroundColor Cyan
+        Write-Verbose "Carico manifest da file locale: $localPath"
         $raw = Get-Content -LiteralPath $localPath -Raw -Encoding UTF8
         return $raw | ConvertFrom-Json
     }
-    Write-Host "Manifest locale non trovato. Scarico da: $PackagesUrl" -ForegroundColor Yellow
+    Write-Verbose "Manifest locale non trovato. Scarico da: $PackagesUrl"
     $tmp = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), "packages.json")
     try {
         Invoke-WebRequest -Uri $PackagesUrl -OutFile $tmp -UseBasicParsing -TimeoutSec 60 | Out-Null
