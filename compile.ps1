@@ -18,7 +18,7 @@ This script will:
 
 param(
     [string]$Name = "onepunch-setup",
-    [string]$Icon = ".\\assets\\app.ico",
+    [string]$Icon = ".\\assets\\icon.ico",
     [switch]$EmbedManifest
 )
 
