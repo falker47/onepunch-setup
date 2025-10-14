@@ -8,7 +8,7 @@
         { "name": "Mozilla Firefox", "id": "Mozilla.Firefox", "selected": false }
       ]
     },
-    "Base": {
+    "Basics": {
       "description": "Strumenti essenziali per tutti",
       "packages": [
         { "name": "7-Zip", "id": "7zip.7zip", "selected": true },

@@ -47,6 +47,13 @@ try {
         $resolved = Resolve-Path $outFile
         Get-Process | Where-Object { $_.Path -and $_.Path -ieq $resolved } |
             Stop-Process -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Milliseconds 500
+        Remove-Item -LiteralPath $outFile -Force -ErrorAction SilentlyContinue
+        if (Test-Path $outFile) {
+            $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+            $outFile = Join-Path $PSScriptRoot ("{0}-{1}.exe" -f $Name, $stamp)
+            Write-Host ("Target locked, building as → {0}" -f $outFile) -ForegroundColor Yellow
+        }
     }
 } catch { }
 
