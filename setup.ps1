@@ -713,7 +713,8 @@ try {
             $grid = New-Object System.Windows.Controls.Grid
             $grid.Margin = '0,6,0,6'
             $grid.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width='*' })) | Out-Null
-            $grid.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width='200' })) | Out-Null
+            $grid.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width='150' })) | Out-Null
+            $grid.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width='50' })) | Out-Null
             $grid.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width='40' })) | Out-Null
 
             $lbl = New-Object System.Windows.Controls.TextBlock
@@ -723,20 +724,29 @@ try {
             [System.Windows.Controls.Grid]::SetColumn($lbl,0)
 
             $pbi = New-Object System.Windows.Controls.ProgressBar
-            $pbi.Minimum = 0; $pbi.Maximum = 100; $pbi.Height = 14; $pbi.Margin = '8,0,8,0'
+            $pbi.Minimum = 0; $pbi.Maximum = 100; $pbi.Height = 14; $pbi.Margin = '8,0,4,0'
             [System.Windows.Controls.Grid]::SetColumn($pbi,1)
+
+            $pct = New-Object System.Windows.Controls.TextBlock
+            $pct.Text = '0%'
+            $pct.HorizontalAlignment = 'Center'
+            $pct.VerticalAlignment = 'Center'
+            $pct.FontSize = 11
+            $pct.Foreground = $progressWindow.Resources['App.Text']
+            [System.Windows.Controls.Grid]::SetColumn($pct,2)
 
             $ico = New-Object System.Windows.Controls.TextBlock
             $ico.Text = '⏳'
             $ico.HorizontalAlignment = 'Center'
             $ico.Foreground = $progressWindow.Resources['App.Text']
-            [System.Windows.Controls.Grid]::SetColumn($ico,2)
+            [System.Windows.Controls.Grid]::SetColumn($ico,3)
 
             $grid.Children.Add($lbl) | Out-Null
             $grid.Children.Add($pbi) | Out-Null
+            $grid.Children.Add($pct) | Out-Null
             $grid.Children.Add($ico) | Out-Null
             $rowsPanel.Children.Add($grid) | Out-Null
-            $rowControls += [pscustomobject]@{ name=$pkg.name; id=$pkg.id; progress=$pbi; icon=$ico }
+            $rowControls += [pscustomobject]@{ name=$pkg.name; id=$pkg.id; progress=$pbi; percent=$pct; icon=$ico }
         }
 
         $null = $progressWindow.Show()
@@ -753,6 +763,7 @@ try {
             # Update UI immediately for this package
             if ($row) {
                 $row.progress.IsIndeterminate = $true
+                $row.percent.Text = '0%'
                 $row.icon.Text = '⏳'
             }
             $progressWindow.Dispatcher.Invoke({}, 'Background')
@@ -770,6 +781,7 @@ try {
                     if ($row) { 
                         $row.progress.IsIndeterminate = $false
                         $row.progress.Value = 100
+                        $row.percent.Text = '100%'
                         $row.icon.Text = '📝'
                     }
                 } catch {
@@ -778,6 +790,7 @@ try {
                     if ($row) { 
                         $row.progress.IsIndeterminate = $false
                         $row.progress.Value = 0
+                        $row.percent.Text = '0%'
                         $row.icon.Text = '❌'
                     }
                 }
@@ -793,6 +806,7 @@ try {
                 if ($row) { 
                     $row.progress.IsIndeterminate = $false
                     $row.progress.Value = 0
+                    $row.percent.Text = '0%'
                     $row.icon.Text = '❌'
                 }
                 $progressWindow.Dispatcher.Invoke({}, 'Background')
@@ -808,6 +822,7 @@ try {
                 if ($row) { 
                     $row.progress.IsIndeterminate = $false
                     $row.progress.Value = 100
+                    $row.percent.Text = '100%'
                     $row.icon.Text = '✅'
                 }
                 $progressWindow.Dispatcher.Invoke({}, 'Background')
@@ -822,15 +837,16 @@ try {
                 if ($row) { 
                     $row.progress.IsIndeterminate = $false
                     $row.progress.Value = 100
+                    $row.percent.Text = '100%'
                     $row.icon.Text = '✅'
                 }
                 $progressWindow.Dispatcher.Invoke({}, 'Background')
                 continue
             }
             
-            # Non-blocking winget installation with real-time updates
+            # Non-blocking winget installation with real-time progress tracking
             try {
-                $wingetArgs = @('install','--id', $pkg.id,'--accept-package-agreements','--accept-source-agreements','--silent')
+                $wingetArgs = @('install','--id', $pkg.id,'--accept-package-agreements','--accept-source-agreements')
                 $psi = New-Object System.Diagnostics.ProcessStartInfo
                 $psi.FileName = 'winget'
                 $psi.Arguments = ($wingetArgs -join ' ')
@@ -843,20 +859,123 @@ try {
                 $proc.StartInfo = $psi
                 $proc.Start() | Out-Null
                 
-                # Non-blocking wait with UI updates
+                # Track this process for cleanup
+                $script:activeProcesses += $proc
+                
+                # Progress tracking variables
+                $progressPercent = 0
+                $lastUpdate = Get-Date
+                $startTime = Get-Date
+                $estimatedDuration = 30000 # 30 seconds default estimate
+                $realProgressFound = $false
+                $maxWaitTime = 300000 # 5 minutes maximum wait
+                
+                # Non-blocking wait with simulated progress based on time
                 while (-not $proc.HasExited) {
-                    $progressWindow.Dispatcher.Invoke({}, 'Background')
-                    Start-Sleep -Milliseconds 150
+                    # Check for timeout
+                    $elapsedMs = [int]((Get-Date) - $startTime).TotalMilliseconds
+                    if ($elapsedMs -gt $maxWaitTime) {
+                        # Timeout reached, kill the process
+                        try {
+                            $proc.Kill()
+                            $proc.WaitForExit(5000)
+                        } catch {
+                            try { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } catch {}
+                        }
+                        break
+                    }
+                    
+                    # Calculate progress based on elapsed time
+                    $timeBasedProgress = [math]::Min([math]::Round(($elapsedMs / $estimatedDuration) * 100), 95)
+                    
+                    # Try to read output for real progress indicators
+                    while ($proc.StandardOutput.Peek() -ne -1) {
+                        $line = $proc.StandardOutput.ReadLine()
+                        if ($line) {
+                            # Parse winget output for download progress
+                            $progressMatch = $line | Select-String -Pattern 'Downloaded\s+([\d.]+)\s+MB\s+of\s+([\d.]+)\s+MB'
+                            if ($progressMatch) {
+                                $downloadedMB = [double]$progressMatch.Matches[0].Groups[1].Value
+                                $totalMB = [double]$progressMatch.Matches[0].Groups[2].Value
+                                if ($totalMB -gt 0) {
+                                    $progressPercent = [math]::Round(($downloadedMB / $totalMB) * 100)
+                                    $realProgressFound = $true
+                                }
+                            }
+                            
+                            # Alternative patterns for different winget output formats
+                            $altMatch = $line | Select-String -Pattern '(\d+)%\s+([\d.]+)\s+MB\s+/\s+([\d.]+)\s+MB'
+                            if ($altMatch) {
+                                $progressPercent = [int]$altMatch.Matches[0].Groups[1].Value
+                                $realProgressFound = $true
+                            }
+                            
+                            # Additional patterns for winget progress
+                            $percentMatch = $line | Select-String -Pattern '(\d+)%'
+                            if ($percentMatch) {
+                                $newPercent = [int]$percentMatch.Matches[0].Groups[1].Value
+                                # Only update if it's higher than current progress
+                                if ($newPercent -gt $progressPercent) {
+                                    $progressPercent = $newPercent
+                                    $realProgressFound = $true
+                                }
+                            }
+                            
+                            # Look for completion indicators
+                            if ($line -match 'Successfully installed|Installation completed') {
+                                $progressPercent = 100
+                                $realProgressFound = $true
+                            }
+                        }
+                    }
+                    
+                    # Use time-based progress only if no real progress found yet
+                    if (-not $realProgressFound) {
+                        $progressPercent = $timeBasedProgress
+                    }
+                    
+                    # Update UI with current progress
+                    if ($row) { 
+                        $row.progress.IsIndeterminate = $false
+                        $row.progress.Value = $progressPercent
+                        $row.percent.Text = "$progressPercent%"
+                    }
+                    
+                    # Force UI update every 200ms
+                    if (((Get-Date) - $lastUpdate).TotalMilliseconds -ge 200) {
+                        $progressWindow.Dispatcher.Invoke({}, 'Background')
+                        $lastUpdate = Get-Date
+                    }
+                    
+                    Start-Sleep -Milliseconds 100
+                }
+                
+                # Clean up process tracking
+                $script:activeProcesses = $script:activeProcesses | Where-Object { $_ -ne $proc }
+                
+                # Wait for process to exit completely
+                if (-not $proc.HasExited) {
+                    $proc.WaitForExit(10000) # Wait up to 10 seconds
                 }
                 
                 $exit = $proc.ExitCode
                 $dur = [int]((Get-Date) - $started).TotalMilliseconds
                 
-                if ($exit -eq 0) {
+                # Check if process was killed due to timeout
+                if ($elapsedMs -gt $maxWaitTime) {
+                    $result = [pscustomobject]@{ id=$pkg.id; name=$pkg.name; status='failed'; startedAt=$started.ToString('s'); durationMs=$dur; errorMessage='Installation timeout (5 minutes)' }
+                    if ($row) { 
+                        $row.progress.IsIndeterminate = $false
+                        $row.progress.Value = 0
+                        $row.percent.Text = '0%'
+                        $row.icon.Text = '⏰'
+                    }
+                } elseif ($exit -eq 0) {
                     $result = [pscustomobject]@{ id=$pkg.id; name=$pkg.name; status='installed'; startedAt=$started.ToString('s'); durationMs=$dur; errorMessage=$null }
                     if ($row) { 
                         $row.progress.IsIndeterminate = $false
                         $row.progress.Value = 100
+                        $row.percent.Text = '100%'
                         $row.icon.Text = '✅'
                     }
                 } else {
@@ -864,6 +983,7 @@ try {
                     if ($row) { 
                         $row.progress.IsIndeterminate = $false
                         $row.progress.Value = 0
+                        $row.percent.Text = '0%'
                         $row.icon.Text = '❌'
                     }
                 }
@@ -876,6 +996,7 @@ try {
                 if ($row) { 
                     $row.progress.IsIndeterminate = $false
                     $row.progress.Value = 0
+                    $row.percent.Text = '0%'
                     $row.icon.Text = '❌'
                 }
             }
@@ -888,9 +1009,29 @@ try {
         $controls.StatusText.Text = 'Completed'
     })
 
+    # Global variable to track active processes
+    $script:activeProcesses = @()
+    
     # Window close prompt
     $window.Add_Closing({
-        # allow immediate close if not installing currently
+        param($sender, $e)
+        
+        # Kill all active winget processes
+        foreach ($proc in $script:activeProcesses) {
+            if ($proc -and -not $proc.HasExited) {
+                try {
+                    $proc.Kill()
+                    $proc.WaitForExit(5000) # Wait up to 5 seconds
+                } catch {
+                    # Force kill if graceful kill fails
+                    try { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } catch {}
+                }
+            }
+        }
+        $script:activeProcesses.Clear()
+        
+        # Allow immediate close
+        $e.Cancel = $false
     })
 
     $window.ShowDialog() | Out-Null
