@@ -1,3 +1,9 @@
+<#
+Onepunch-setup - Main GUI installer
+WPF GUI in PowerShell to select categories and install apps via winget.
+Uses brand theming, two-column layout, search, and logs a JSON summary.
+#>
+
 param(
     [switch]$DryRun,
     [switch]$EnableWSL,
@@ -1264,5 +1270,3 @@ catch {
 finally {
     Stop-Logging -TranscriptInfo $TranscriptInfo
 }
-
-

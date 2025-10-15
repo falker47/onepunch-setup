@@ -1,20 +1,10 @@
-<#!
+<#
 Onepunch-setup - Compile script
-Use this command to build the EXE: .\compile.ps1
-
-Usage examples (run in PowerShell as Administrator):
-  # Default build → .\onepunch-setup.exe
-  .\compile.ps1
-
-  # Custom name and icon
-  .\compile.ps1 -Name "Onepunch-setup" -Icon ".\assets\app.ico"
-
-This script will:
-  - Ensure TLS 1.2
-  - Ensure ps2exe module is installed
-  - Stop any running output EXE with the same name
-  - Build the EXE from setup.ps1 (-noConsole, -requireAdmin)
-!#>
+Builds the EXE from setup.ps1 (-noConsole, -requireAdmin). Ensures TLS 1.2, installs ps2exe if missing, and stops any running target EXE.
+Usage (Admin):
+  .\compile.ps1            # → .\onepunch-setup.exe
+  .\compile.ps1 -Name "Onepunch-setup" -Icon ".\assets\icon.ico"
+#>
 
 param(
     [string]$Name = "onepunch-setup",

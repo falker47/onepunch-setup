@@ -1,5 +1,8 @@
-# Onepunch-setup Portable Version
-# Questa versione evita i problemi di antivirus usando direttamente PowerShell
+<#
+Onepunch-setup - Main GUI installer
+WPF GUI in PowerShell to select categories and install apps via winget.
+Uses brand theming, two-column layout, search, and logs a JSON summary.
+#>
 
 param(
     [switch]$DryRun,
@@ -16,6 +19,9 @@ try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
 $DefaultPackagesUrl = 'https://raw.githubusercontent.com/falker47/onepunch-setup/main/packages.json'
 $DefaultLogDir = Join-Path $env:LOCALAPPDATA 'pc-setup\logs'
 
+# Optional embedded manifest (base64-encoded JSON). Replaced by compile.ps1 if embedding is enabled
+$EmbeddedManifestBase64 = '<#EMBED_PACKAGES_JSON#>'
+
 if (-not $PackagesUrl -or [string]::IsNullOrWhiteSpace($PackagesUrl)) {
     $PackagesUrl = $DefaultPackagesUrl
 }
@@ -23,136 +29,257 @@ if (-not $LogDir -or [string]::IsNullOrWhiteSpace($LogDir)) {
     $LogDir = $DefaultLogDir
 }
 
-# Import the utils module if available, otherwise use embedded functions
-$utilsPath = Join-Path $PSScriptRoot 'utils.psm1'
-if (Test-Path $utilsPath) {
-    Import-Module $utilsPath -Force
-} else {
-    # Embedded functions (same as in setup.ps1)
-    function Start-AdminElevation {
-        $currentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
-        $principal = New-Object Security.Principal.WindowsPrincipal($currentIdentity)
-        $isAdmin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-        if ($isAdmin) { return }
+# Import utils module (embedded functions instead of external file)
+function Start-AdminElevation {
+    $currentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = New-Object Security.Principal.WindowsPrincipal($currentIdentity)
+    $isAdmin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    if ($isAdmin) { return }
 
-        Write-Host 'Elevazione privilegi richiesta, rilancio come amministratore…' -ForegroundColor Yellow
+    Write-Host 'Elevazione privilegi richiesta, rilancio come amministratore…' -ForegroundColor Yellow
 
-        $psExe = (Get-Process -Id $PID).Path
-        $argsList = @()
-        if ($MyInvocation.MyCommand.Path) {
-            $argsList += '-ExecutionPolicy', 'Bypass', '-File', ("""{0}""" -f $MyInvocation.MyCommand.Path)
-            $BoundParameters.GetEnumerator() | ForEach-Object {
-                $k = $_.Key; $v = $_.Value
-                if ($v -is [switch]) {
-                    if ($v.IsPresent) { $argsList += ("-{0}" -f $k) }
-                } elseif ($null -ne $v -and -not [string]::IsNullOrWhiteSpace([string]$v)) {
-                    $argsList += ("-{0}" -f $k), ("""{0}""" -f $v)
-                }
+    $psExe = (Get-Process -Id $PID).Path
+    $argsList = @()
+    # Preserve script and arguments
+    if ($MyInvocation.MyCommand -and $MyInvocation.MyCommand.Path) {
+        $argsList += '-ExecutionPolicy', 'Bypass', '-File', ("""{0}""" -f $MyInvocation.MyCommand.Path)
+        $BoundParameters.GetEnumerator() | ForEach-Object {
+            $k = $_.Key; $v = $_.Value
+            if ($v -is [switch]) {
+                if ($v.IsPresent) { $argsList += ("-{0}" -f $k) }
+            } elseif ($null -ne $v -and -not [string]::IsNullOrWhiteSpace([string]$v)) {
+                $argsList += ("-{0}" -f $k), ("""{0}""" -f $v)
             }
         }
-
-        if ($argsList.Count -gt 0) {
-            Start-Process -FilePath $psExe -Verb RunAs -ArgumentList $argsList | Out-Null
-        } else {
-            Start-Process -FilePath $psExe -Verb RunAs | Out-Null
-        }
-        exit 0
     }
 
-    function Start-Logging {
-        param([Parameter(Mandatory=$true)][string]$LogDir)
-        if (-not (Test-Path $LogDir)) { New-Item -ItemType Directory -Path $LogDir -Force | Out-Null }
-        $ts = Get-Date -Format 'yyyyMMdd-HHmmss'
-        $logPath = Join-Path $LogDir ("setup-{0}.log" -f $ts)
-        Start-Transcript -Path $logPath -Force | Out-Null
-        return @{ LogPath = $logPath; StartedAt = (Get-Date) }
+    # Only pass ArgumentList if it has content
+    if ($argsList.Count -gt 0) {
+        Start-Process -FilePath $psExe -Verb RunAs -ArgumentList $argsList | Out-Null
+    } else {
+        Start-Process -FilePath $psExe -Verb RunAs | Out-Null
     }
+    exit 0
+}
 
-    function Stop-Logging {
-        param([Parameter(Mandatory=$true)][hashtable]$TranscriptInfo)
-        try { Stop-Transcript | Out-Null } catch { }
-    }
+function Start-Logging {
+    param(
+        [Parameter(Mandatory=$true)][string]$LogDir
+    )
+    if (-not (Test-Path $LogDir)) { New-Item -ItemType Directory -Path $LogDir -Force | Out-Null }
+    $ts = Get-Date -Format 'yyyyMMdd-HHmmss'
+    $logPath = Join-Path $LogDir ("setup-{0}.log" -f $ts)
+    Start-Transcript -Path $logPath -Force | Out-Null
+    return @{ LogPath = $logPath; StartedAt = (Get-Date) }
+}
 
-    function Show-ErrorDialog {
-        param([Parameter(Mandatory=$true)][string]$Message, [string]$Title = 'Errore')
-        Add-Type -AssemblyName PresentationFramework
-        [System.Windows.MessageBox]::Show($Message, $Title, 'OK', 'Error') | Out-Null
-    }
+function Stop-Logging {
+    param(
+        [Parameter(Mandatory=$true)][hashtable]$TranscriptInfo
+    )
+    try { Stop-Transcript | Out-Null } catch { }
+}
 
-    function Get-Manifest {
-        param([Parameter(Mandatory=$true)][string]$PackagesUrl)
-        $localPath = Join-Path $PSScriptRoot 'packages.json'
-        if ([string]::IsNullOrWhiteSpace($PSScriptRoot)) {
-            $exePath = [System.Reflection.Assembly]::GetExecutingAssembly().Location
-            if ($exePath) {
-                $localPath = Join-Path (Split-Path -Parent $exePath) 'packages.json'
-            } else {
-                $localPath = Join-Path (Get-Location) 'packages.json'
-            }
-        }
-        if (Test-Path $localPath) {
-            Write-Host "Carico manifest da file locale: $localPath" -ForegroundColor Cyan
-            $raw = Get-Content -LiteralPath $localPath -Raw -Encoding UTF8
-            return $raw | ConvertFrom-Json
-        }
-        Write-Host "Manifest locale non trovato. Scarico da: $PackagesUrl" -ForegroundColor Yellow
-        $tmp = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), "packages.json")
+function Show-ErrorDialog {
+    param(
+        [Parameter(Mandatory=$true)][string]$Message,
+        [string]$Title = 'Errore'
+    )
+    Add-Type -AssemblyName PresentationFramework
+    [System.Windows.MessageBox]::Show($Message, $Title, 'OK', 'Error') | Out-Null
+}
+
+function Get-Manifest {
+    param(
+        [Parameter(Mandatory=$true)][string]$PackagesUrl
+    )
+    # 0) Embedded manifest (if present)
+    if ($EmbeddedManifestBase64 -and $EmbeddedManifestBase64 -notlike '<#*#>') {
         try {
-            Invoke-WebRequest -Uri $PackagesUrl -OutFile $tmp -UseBasicParsing -TimeoutSec 60 | Out-Null
-            $raw = Get-Content -LiteralPath $tmp -Raw -Encoding UTF8
+            $bytes = [Convert]::FromBase64String($EmbeddedManifestBase64)
+            $raw = [System.Text.Encoding]::UTF8.GetString($bytes)
             return $raw | ConvertFrom-Json
-        } catch {
-            Show-ErrorDialog -Message ("Impossibile scaricare il manifest da: {0}`n{1}" -f $PackagesUrl, $_.Exception.Message) -Title 'Manifest non disponibile'
-            throw
-        }
+        } catch { }
     }
 
-    function Test-Manifest {
-        param([Parameter(Mandatory=$true)]$Manifest)
-        if (-not $Manifest.categories) { throw 'Manifest non valido: manca la proprietà categories' }
-        foreach ($categoryName in $Manifest.categories.PSObject.Properties.Name) {
-            $category = $Manifest.categories.$categoryName
-            if (-not $category.packages -or $category.packages.Count -eq 0) {
-                throw ("Categoria '{0}' non valida: packages è vuoto" -f $categoryName)
+    # 1) Try to find packages.json in the same directory as the EXE
+    $exePath = [System.Reflection.Assembly]::GetExecutingAssembly().Location
+    $localPath = if ($exePath) { Join-Path (Split-Path -Parent $exePath) 'packages.json' } else { 'packages.json' }
+    
+    if (Test-Path $localPath) {
+        Write-Verbose "Carico manifest da file locale: $localPath"
+        $raw = Get-Content -LiteralPath $localPath -Raw -Encoding UTF8
+        return $raw | ConvertFrom-Json
+    }
+    # 2) Remote fallback
+    Write-Verbose "Manifest locale non trovato. Scarico da: $PackagesUrl"
+    $tmp = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), "packages.json")
+    try {
+        Invoke-WebRequest -Uri $PackagesUrl -OutFile $tmp -UseBasicParsing -TimeoutSec 60 | Out-Null
+        $raw = Get-Content -LiteralPath $tmp -Raw -Encoding UTF8
+        return $raw | ConvertFrom-Json
+    } catch {
+        Show-ErrorDialog -Message ("Impossibile scaricare il manifest da: {0}`n{1}" -f $PackagesUrl, $_.Exception.Message) -Title 'Manifest non disponibile'
+        throw
+    }
+}
+
+function Test-Manifest {
+    param(
+        [Parameter(Mandatory=$true)]$Manifest
+    )
+    if (-not $Manifest.categories) { throw 'Manifest non valido: manca la proprietà categories' }
+    foreach ($categoryName in $Manifest.categories.PSObject.Properties.Name) {
+        $category = $Manifest.categories.$categoryName
+        if (-not $category.packages -or $category.packages.Count -eq 0) {
+            throw ("Categoria '{0}' non valida: packages è vuoto" -f $categoryName)
+        }
+        foreach ($pkg in $category.packages) {
+            if (-not $pkg.name) {
+                throw ("Pacchetto in '{0}' non valido: 'name' è richiesto" -f $categoryName)
             }
-            foreach ($pkg in $category.packages) {
-                if (-not $pkg.name) { throw ("Pacchetto in '{0}' non valido: 'name' è richiesto" -f $categoryName) }
-                $isManual = $false
-                if ($null -ne $pkg.PSObject.Properties['manual']) { $isManual = [bool]$pkg.manual }
-                if ($isManual) {
-                    if (-not $pkg.url -or [string]::IsNullOrWhiteSpace([string]$pkg.url)) {
-                        throw ("Pacchetto manuale '{0}' in '{1}' non valido: 'url' è richiesto" -f $pkg.name, $categoryName)
-                    }
-                } else {
-                    if (-not $pkg.id -or [string]::IsNullOrWhiteSpace([string]$pkg.id)) {
-                        throw ("Pacchetto in '{0}' non valido: 'id' è richiesto (o manual=true con url)" -f $categoryName)
-                    }
+            $isManual = $false
+            if ($null -ne $pkg.PSObject.Properties['manual']) { $isManual = [bool]$pkg.manual }
+            if ($isManual) {
+                if (-not $pkg.url -or [string]::IsNullOrWhiteSpace([string]$pkg.url)) {
+                    throw ("Pacchetto manuale '{0}' in '{1}' non valido: 'url' è richiesto" -f $pkg.name, $categoryName)
+                }
+            } else {
+                if (-not $pkg.id -or [string]::IsNullOrWhiteSpace([string]$pkg.id)) {
+                    throw ("Pacchetto in '{0}' non valido: 'id' è richiesto (o impostare manual=true con url)" -f $categoryName)
                 }
             }
         }
     }
+}
 
-    function Test-IsInstalled {
-        param([Parameter(Mandatory=$true)][string]$Id)
+function Test-IsInstalled {
+    param(
+        [Parameter(Mandatory=$true)][string]$Id
+    )
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = 'winget'
+    $psi.Arguments = "list --id ""$Id"""
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    $p = [System.Diagnostics.Process]::Start($psi)
+    $out = $p.StandardOutput.ReadToEnd()
+    $p.WaitForExit()
+    if ($out -match '(?im)^No installed package found matching input criteria') { return $false }
+    # If table has at least one non-header line and contains the ID, consider installed
+    if ($out -match [Regex]::Escape($Id)) { return $true }
+    return $false
+}
+
+function Install-Package {
+    param(
+        [Parameter(Mandatory=$true)][string]$Id,
+        [Parameter(Mandatory=$true)][string]$Name,
+        [switch]$DryRun
+    )
+    $started = Get-Date
+    try {
+        if (Test-IsInstalled -Id $Id) {
+            return [pscustomobject]@{ id=$Id; name=$Name; status='already_present'; startedAt=$started.ToString('s'); durationMs=0; errorMessage=$null; badge='Already installed' }
+        }
+        if ($DryRun) {
+            return [pscustomobject]@{ id=$Id; name=$Name; status='installed'; startedAt=$started.ToString('s'); durationMs=0; errorMessage=$null; dryRun=$true }
+        }
+        # Non-blocking winget installation with timeout
+        $maxWaitTime = 300000 # 5 minutes default
+        if ($Id -match 'Spotify|Blender|VisualStudio|Docker|WinRAR|Notepad\+\+') {
+            $maxWaitTime = 600000 # 10 minutes for large packages
+        }
+        
+        $wingetArgs = @('install','--id', $Id,'--accept-package-agreements','--accept-source-agreements','--silent')
         $psi = New-Object System.Diagnostics.ProcessStartInfo
         $psi.FileName = 'winget'
-        $psi.Arguments = "list --id ""$Id"""
+        $psi.Arguments = ($wingetArgs -join ' ')
+        $psi.UseShellExecute = $false
         $psi.RedirectStandardOutput = $true
         $psi.RedirectStandardError = $true
-        $psi.UseShellExecute = $false
         $psi.CreateNoWindow = $true
-        $p = [System.Diagnostics.Process]::Start($psi)
-        $out = $p.StandardOutput.ReadToEnd()
-        $p.WaitForExit()
-        if ($out -match '(?im)^No installed package found matching input criteria') { return $false }
-        if ($out -match [Regex]::Escape($Id)) { return $true }
-        return $false
+        
+        $proc = New-Object System.Diagnostics.Process
+        $proc.StartInfo = $psi
+        $proc.Start() | Out-Null
+        
+        # Non-blocking wait with timeout
+        $startTime = Get-Date
+        while (-not $proc.HasExited) {
+            # Check for timeout
+            $elapsedMs = [int]((Get-Date) - $startTime).TotalMilliseconds
+            if ($elapsedMs -gt $maxWaitTime) {
+                # Timeout reached, kill the process
+                try {
+                    $proc.Kill()
+                    $proc.WaitForExit(5000)
+                } catch {
+                    try { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } catch {}
+                }
+                break
+            }
+            
+            # Update every 500ms to keep responsive
+            Start-Sleep -Milliseconds 500
+        }
+        
+        # Wait for process to exit completely
+        if (-not $proc.HasExited) {
+            $proc.WaitForExit(10000) # Wait up to 10 seconds
+        }
+        
+        $exit = $proc.ExitCode
+        $dur = [int]((Get-Date) - $started).TotalMilliseconds
+        
+        # Check if process was killed due to timeout
+        if ($elapsedMs -gt $maxWaitTime) {
+            $timeoutMinutes = [math]::Round($maxWaitTime / 60000, 1)
+            return [pscustomobject]@{ id=$Id; name=$Name; status='failed'; startedAt=$started.ToString('s'); durationMs=$dur; errorMessage="Installation timeout ($timeoutMinutes minutes)" }
+        } elseif ($exit -eq 0) {
+            return [pscustomobject]@{ id=$Id; name=$Name; status='installed'; startedAt=$started.ToString('s'); durationMs=$dur; errorMessage=$null }
+        } else {
+            return [pscustomobject]@{ id=$Id; name=$Name; status='failed'; startedAt=$started.ToString('s'); durationMs=$dur; errorMessage=("ExitCode {0}" -f $exit) }
+        }
+    } catch {
+        $dur = [int]((Get-Date) - $started).TotalMilliseconds
+        return [pscustomobject]@{ id=$Id; name=$Name; status='failed'; startedAt=$started.ToString('s'); durationMs=$dur; errorMessage=$_.Exception.Message }
     }
+}
 
-    function Enable-WSLFeatures {
-        Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Windows-Subsystem-Linux -All -NoRestart -ErrorAction Stop | Out-Null
-        Enable-WindowsOptionalFeature -Online -FeatureName VirtualMachinePlatform -All -NoRestart -ErrorAction Stop | Out-Null
+function Write-Summary {
+    param(
+        [Parameter(Mandatory=$true)]$RunState,
+        [Parameter(Mandatory=$true)][string]$LogDir
+    )
+    if (-not (Test-Path $LogDir)) { New-Item -ItemType Directory -Path $LogDir -Force | Out-Null }
+    $ts = Get-Date -Format 'yyyyMMdd-HHmmss'
+    $summaryPath = Join-Path $LogDir ("summary-{0}.json" -f $ts)
+    $counts = [ordered]@{
+        installed = ($RunState.results | Where-Object { $_.status -eq 'installed' }).Count
+        already_present = ($RunState.results | Where-Object { $_.status -eq 'already_present' }).Count
+        manual = ($RunState.results | Where-Object { $_.status -eq 'manual' }).Count
+        failed = ($RunState.results | Where-Object { $_.status -eq 'failed' }).Count
     }
+    $summary = [ordered]@{
+        startedAt = $RunState.startedAt
+        finishedAt = (Get-Date).ToString('s')
+        dryRun = $RunState.dryRun
+        enableWSL = $RunState.enableWSL
+        autoReboot = $RunState.autoReboot
+        counts = $counts
+        results = $RunState.results
+    }
+    ($summary | ConvertTo-Json -Depth 10) | Out-File -FilePath $summaryPath -Encoding utf8
+    Write-Host ("Sommario scritto in: {0}" -f $summaryPath) -ForegroundColor Green
+    return [pscustomobject]$counts
+}
+
+function Enable-WSLFeatures {
+    Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Windows-Subsystem-Linux -All -NoRestart -ErrorAction Stop | Out-Null
+    Enable-WindowsOptionalFeature -Online -FeatureName VirtualMachinePlatform -All -NoRestart -ErrorAction Stop | Out-Null
 }
 
 # Ensure admin and execution context
@@ -172,7 +299,7 @@ try {
     $manifest = Get-Manifest -PackagesUrl $PackagesUrl
     Test-Manifest -Manifest $manifest
 
-    # Build GUI (WPF) - Same as original setup.ps1 but with fixed search
+    # Build GUI (WPF)
     Add-Type -AssemblyName PresentationFramework
     Add-Type -AssemblyName PresentationCore
     Add-Type -AssemblyName WindowsBase
@@ -516,6 +643,7 @@ try {
             }
             $row.Children.Add($badge) | Out-Null
 
+            # MaxWidth is adjusted later via a global resize handler
             $chk.Content = $row
             if ($pkg.description) { $chk.ToolTip = $pkg.description }
             $chk.Tag = [pscustomobject]@{ Pkg=$pkg; Master=$catCheck; Panel=$catPanel }
@@ -560,6 +688,7 @@ try {
         }
 
         # Localize references to avoid late-binding closure issues
+        # Store context on master for event handlers
         $catCheck.Tag = [pscustomobject]@{ Panel=$catPanel; Master=$catCheck }
         $catCheck.IsThreeState = $true
 
@@ -614,7 +743,7 @@ try {
         $controls.CreditText.Inlines.Add($hl) | Out-Null
     } catch { }
 
-    # Live search filter - FIXED VERSION
+    # Live search filter
     $null = $controls.TxtSearch.Add_TextChanged({ param($sender,$e)
         $q = ($controls.TxtSearch.Text | ForEach-Object { $_.ToString() })
         $q = if ($q) { $q.ToLowerInvariant() } else { '' }
@@ -752,7 +881,8 @@ try {
     $null = $controls.BtnSelectAll.Add_Click({ foreach ($c in $packageCheckBoxes) { $c.IsChecked = $true } & $updateInstallButton })
     $null = $controls.BtnDeselectAll.Add_Click({ foreach ($c in $packageCheckBoxes) { $c.IsChecked = $false } & $updateInstallButton })
 
-    # Install click handler - Simplified version for portable
+
+    # Install click handler
     $null = $controls.BtnInstall.Add_Click({
         $controls.BtnInstall.IsEnabled = $false
         $controls.StatusText.Text = 'Installing…'
@@ -774,17 +904,89 @@ try {
             try { Enable-WSLFeatures } catch { Write-Host $_ -ForegroundColor Yellow }
         }
 
-        # Simple installation loop with progress
+        # Build a dedicated progress window with rows: name | per-item progress | status icon
+        $progressXaml = @"
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Installing packages" Height="540" Width="720" WindowStartupLocation="CenterScreen" Background="{DynamicResource App.Background}" Foreground="{DynamicResource App.Text}">
+  <Border Background="{DynamicResource App.Card}" BorderBrush="{DynamicResource App.Border}" BorderThickness="1" Margin="12" Padding="8">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+      <StackPanel x:Name="RowsPanel"/>
+    </ScrollViewer>
+  </Border>
+</Window>
+"@
+        $pr = New-Object System.Xml.XmlNodeReader ([xml]$progressXaml)
+        $progressWindow = [Windows.Markup.XamlReader]::Load($pr)
+        $rowsPanel = $progressWindow.FindName('RowsPanel')
+
+        # Ensure theme brushes are available in this window
+        foreach ($k in @('App.Background','App.Card','App.Border','App.Text','App.MutedText','App.Primary','App.PrimaryHover','App.PrimaryText')) {
+            if ($window.Resources.Contains($k)) {
+                if ($progressWindow.Resources.Contains($k)) { $null = $progressWindow.Resources.Remove($k) }
+                $null = $progressWindow.Resources.Add($k, $window.Resources[$k])
+            }
+        }
+
+        $rowControls = @()
+        foreach ($pkg in $selectedPackages) {
+            $grid = New-Object System.Windows.Controls.Grid
+            $grid.Margin = '0,6,0,6'
+            $grid.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width='*' })) | Out-Null
+            $grid.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width='150' })) | Out-Null
+            $grid.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width='50' })) | Out-Null
+            $grid.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width='40' })) | Out-Null
+
+            $lbl = New-Object System.Windows.Controls.TextBlock
+            $lbl.Text = [string]$pkg.name
+            $lbl.TextWrapping = 'Wrap'
+            $lbl.Foreground = $progressWindow.Resources['App.Text']
+            [System.Windows.Controls.Grid]::SetColumn($lbl,0)
+
+            $pbi = New-Object System.Windows.Controls.ProgressBar
+            $pbi.Minimum = 0; $pbi.Maximum = 100; $pbi.Height = 14; $pbi.Margin = '8,0,4,0'
+            [System.Windows.Controls.Grid]::SetColumn($pbi,1)
+
+            $pct = New-Object System.Windows.Controls.TextBlock
+            $pct.Text = '0%'
+            $pct.HorizontalAlignment = 'Center'
+            $pct.VerticalAlignment = 'Center'
+            $pct.FontSize = 11
+            $pct.Foreground = $progressWindow.Resources['App.Text']
+            [System.Windows.Controls.Grid]::SetColumn($pct,2)
+
+            $ico = New-Object System.Windows.Controls.TextBlock
+            $ico.Text = '⏳'
+            $ico.HorizontalAlignment = 'Center'
+            $ico.Foreground = $progressWindow.Resources['App.Text']
+            [System.Windows.Controls.Grid]::SetColumn($ico,3)
+
+            $grid.Children.Add($lbl) | Out-Null
+            $grid.Children.Add($pbi) | Out-Null
+            $grid.Children.Add($pct) | Out-Null
+            $grid.Children.Add($ico) | Out-Null
+            $rowsPanel.Children.Add($grid) | Out-Null
+            $rowControls += [pscustomobject]@{ name=$pkg.name; id=$pkg.id; progress=$pbi; percent=$pct; icon=$ico }
+        }
+
+        $null = $progressWindow.Show()
+
         $total = [double]($selectedPackages.Count)
         $i = 0
         foreach ($pkg in $selectedPackages) {
             $i++
             $pct = [math]::Round(($i/$total)*100)
             $controls.Prg.Value = $pct
-            $controls.StatusText.Text = "Installing $($pkg.name)... ($i/$total)"
+            $controls.PrgItem.Value = 0
+            $row = $rowControls | Where-Object { $_.name -eq $pkg.name }
             
-            # Force UI update
-            $window.Dispatcher.Invoke({}, 'Background')
+            # Update UI immediately for this package
+            if ($row) {
+                $row.progress.IsIndeterminate = $true
+                $row.percent.Text = '0%'
+                $row.icon.Text = '⏳'
+            }
+            $progressWindow.Dispatcher.Invoke({}, 'Background')
             
             $isManual = $false
             if ($null -ne $pkg.PSObject.Properties['manual']) { $isManual = [bool]$pkg.manual }
@@ -796,10 +998,23 @@ try {
                     }
                     $dur = [int]((Get-Date) - $started).TotalMilliseconds
                     $runState.results += [pscustomobject]@{ id=$null; name=$pkg.name; status='manual'; startedAt=$started.ToString('s'); durationMs=$dur; url=$pkg.url }
+                    if ($row) { 
+                        $row.progress.IsIndeterminate = $false
+                        $row.progress.Value = 100
+                        $row.percent.Text = '100%'
+                        $row.icon.Text = '📝'
+                    }
                 } catch {
                     $dur = [int]((Get-Date) - $started).TotalMilliseconds
                     $runState.results += [pscustomobject]@{ id=$null; name=$pkg.name; status='failed'; startedAt=$started.ToString('s'); durationMs=$dur; errorMessage=$_.Exception.Message; url=$pkg.url }
+                    if ($row) { 
+                        $row.progress.IsIndeterminate = $false
+                        $row.progress.Value = 0
+                        $row.percent.Text = '0%'
+                        $row.icon.Text = '❌'
+                    }
                 }
+                $progressWindow.Dispatcher.Invoke({}, 'Background')
                 continue
             }
             
@@ -808,6 +1023,13 @@ try {
                 $started = Get-Date
                 $dur = [int]((Get-Date) - $started).TotalMilliseconds
                 $runState.results += [pscustomobject]@{ id=$null; name=$pkg.name; status='failed'; startedAt=$started.ToString('s'); durationMs=$dur; errorMessage='Missing winget id' }
+                if ($row) { 
+                    $row.progress.IsIndeterminate = $false
+                    $row.progress.Value = 0
+                    $row.percent.Text = '0%'
+                    $row.icon.Text = '❌'
+                }
+                $progressWindow.Dispatcher.Invoke({}, 'Background')
                 continue
             }
             
@@ -817,6 +1039,13 @@ try {
                 $dur = [int]((Get-Date) - $started).TotalMilliseconds
                 $result = [pscustomobject]@{ id=$pkg.id; name=$pkg.name; status='already_present'; startedAt=$started.ToString('s'); durationMs=$dur; errorMessage=$null; badge='Already installed' }
                 $runState.results += $result
+                if ($row) { 
+                    $row.progress.IsIndeterminate = $false
+                    $row.progress.Value = 100
+                    $row.percent.Text = '100%'
+                    $row.icon.Text = '✅'
+                }
+                $progressWindow.Dispatcher.Invoke({}, 'Background')
                 continue
             }
             
@@ -825,10 +1054,17 @@ try {
                 $dur = [int]((Get-Date) - $started).TotalMilliseconds
                 $result = [pscustomobject]@{ id=$pkg.id; name=$pkg.name; status='installed'; startedAt=$started.ToString('s'); durationMs=$dur; errorMessage=$null; dryRun=$true }
                 $runState.results += $result
+                if ($row) { 
+                    $row.progress.IsIndeterminate = $false
+                    $row.progress.Value = 100
+                    $row.percent.Text = '100%'
+                    $row.icon.Text = '✅'
+                }
+                $progressWindow.Dispatcher.Invoke({}, 'Background')
                 continue
             }
             
-            # Non-blocking winget installation with timeout
+            # Non-blocking winget installation with real-time progress tracking
             try {
                 # Determine timeout based on package size/complexity
                 $maxWaitTime = 300000 # 5 minutes default
@@ -852,8 +1088,14 @@ try {
                 # Track this process for cleanup
                 $script:activeProcesses += $proc
                 
-                # Non-blocking wait with timeout
+                # Progress tracking variables
+                $progressPercent = 0
+                $lastUpdate = Get-Date
                 $startTime = Get-Date
+                $estimatedDuration = 60000 # 60 seconds default estimate for large packages
+                $realProgressFound = $false
+                
+                # Non-blocking wait with simulated progress based on time
                 while (-not $proc.HasExited) {
                     # Check for timeout
                     $elapsedMs = [int]((Get-Date) - $startTime).TotalMilliseconds
@@ -868,11 +1110,69 @@ try {
                         break
                     }
                     
-                    # Update UI every 500ms to keep it responsive
-                    $elapsedSeconds = [math]::Round($elapsedMs / 1000)
-                    $controls.StatusText.Text = "Installing $($pkg.name)... ($i/$total) - ${elapsedSeconds}s"
-                    $window.Dispatcher.Invoke({}, 'Background')
-                    Start-Sleep -Milliseconds 500
+                    # Calculate progress based on elapsed time
+                    $timeBasedProgress = [math]::Min([math]::Round(($elapsedMs / $estimatedDuration) * 100), 95)
+                    
+                    # Try to read output for real progress indicators
+                    while ($proc.StandardOutput.Peek() -ne -1) {
+                        $line = $proc.StandardOutput.ReadLine()
+                        if ($line) {
+                            # Parse winget output for download progress
+                            $progressMatch = $line | Select-String -Pattern 'Downloaded\s+([\d.]+)\s+MB\s+of\s+([\d.]+)\s+MB'
+                            if ($progressMatch) {
+                                $downloadedMB = [double]$progressMatch.Matches[0].Groups[1].Value
+                                $totalMB = [double]$progressMatch.Matches[0].Groups[2].Value
+                                if ($totalMB -gt 0) {
+                                    $progressPercent = [math]::Round(($downloadedMB / $totalMB) * 100)
+                                    $realProgressFound = $true
+                                }
+                            }
+                            
+                            # Alternative patterns for different winget output formats
+                            $altMatch = $line | Select-String -Pattern '(\d+)%\s+([\d.]+)\s+MB\s+/\s+([\d.]+)\s+MB'
+                            if ($altMatch) {
+                                $progressPercent = [int]$altMatch.Matches[0].Groups[1].Value
+                                $realProgressFound = $true
+                            }
+                            
+                            # Additional patterns for winget progress
+                            $percentMatch = $line | Select-String -Pattern '(\d+)%'
+                            if ($percentMatch) {
+                                $newPercent = [int]$percentMatch.Matches[0].Groups[1].Value
+                                # Only update if it's higher than current progress
+                                if ($newPercent -gt $progressPercent) {
+                                    $progressPercent = $newPercent
+                                    $realProgressFound = $true
+                                }
+                            }
+                            
+                            # Look for completion indicators
+                            if ($line -match 'Successfully installed|Installation completed') {
+                                $progressPercent = 100
+                                $realProgressFound = $true
+                            }
+                        }
+                    }
+                    
+                    # Use time-based progress only if no real progress found yet
+                    if (-not $realProgressFound) {
+                        $progressPercent = $timeBasedProgress
+                    }
+                    
+                    # Update UI with current progress
+                    if ($row) { 
+                        $row.progress.IsIndeterminate = $false
+                        $row.progress.Value = $progressPercent
+                        $row.percent.Text = "$progressPercent%"
+                    }
+                    
+                    # Force UI update every 200ms
+                    if (((Get-Date) - $lastUpdate).TotalMilliseconds -ge 200) {
+                        $progressWindow.Dispatcher.Invoke({}, 'Background')
+                        $lastUpdate = Get-Date
+                    }
+                    
+                    Start-Sleep -Milliseconds 100
                 }
                 
                 # Clean up process tracking
@@ -890,10 +1190,28 @@ try {
                 if ($elapsedMs -gt $maxWaitTime) {
                     $timeoutMinutes = [math]::Round($maxWaitTime / 60000, 1)
                     $result = [pscustomobject]@{ id=$pkg.id; name=$pkg.name; status='failed'; startedAt=$started.ToString('s'); durationMs=$dur; errorMessage="Installation timeout ($timeoutMinutes minutes)" }
+                    if ($row) { 
+                        $row.progress.IsIndeterminate = $false
+                        $row.progress.Value = 0
+                        $row.percent.Text = '0%'
+                        $row.icon.Text = '⏰'
+                    }
                 } elseif ($exit -eq 0) {
                     $result = [pscustomobject]@{ id=$pkg.id; name=$pkg.name; status='installed'; startedAt=$started.ToString('s'); durationMs=$dur; errorMessage=$null }
+                    if ($row) { 
+                        $row.progress.IsIndeterminate = $false
+                        $row.progress.Value = 100
+                        $row.percent.Text = '100%'
+                        $row.icon.Text = '✅'
+                    }
                 } else {
                     $result = [pscustomobject]@{ id=$pkg.id; name=$pkg.name; status='failed'; startedAt=$started.ToString('s'); durationMs=$dur; errorMessage=("ExitCode {0}" -f $exit) }
+                    if ($row) { 
+                        $row.progress.IsIndeterminate = $false
+                        $row.progress.Value = 0
+                        $row.percent.Text = '0%'
+                        $row.icon.Text = '❌'
+                    }
                 }
                 $runState.results += $result
                 
@@ -901,11 +1219,20 @@ try {
                 $dur = [int]((Get-Date) - $started).TotalMilliseconds
                 $result = [pscustomobject]@{ id=$pkg.id; name=$pkg.name; status='failed'; startedAt=$started.ToString('s'); durationMs=$dur; errorMessage=$_.Exception.Message }
                 $runState.results += $result
+                if ($row) { 
+                    $row.progress.IsIndeterminate = $false
+                    $row.progress.Value = 0
+                    $row.percent.Text = '0%'
+                    $row.icon.Text = '❌'
+                }
             }
+            
+            # Force UI update after each package
+            $progressWindow.Dispatcher.Invoke({}, 'Background')
         }
 
+        $counts = Write-Summary -RunState $runState -LogDir $LogDir
         $controls.StatusText.Text = 'Completed'
-        $controls.BtnInstall.IsEnabled = $true
     })
 
     # Global variable to track active processes

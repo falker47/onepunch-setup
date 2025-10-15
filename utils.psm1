@@ -1,3 +1,9 @@
+<#
+Onepunch-setup - Utility module
+Provides helper functions: elevation, logging, manifest load/validation, winget checks,
+installation helpers, summary writing, and error dialogs.
+#>
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
