@@ -371,7 +371,14 @@ try {
             </StackPanel>
         </Grid>
         <ScrollViewer x:Name="MainScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Background="{DynamicResource App.Background}">
-            <WrapPanel x:Name="CategoriesPanel" Margin="12"/>
+            <Grid x:Name="CategoriesPanel" Margin="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel x:Name="LeftColumn" Grid.Column="0"/>
+                <StackPanel x:Name="RightColumn" Grid.Column="1" Margin="12,0,0,0"/>
+            </Grid>
         </ScrollViewer>
     </DockPanel>
 </Window>
@@ -429,7 +436,10 @@ try {
         $controls.BtnInstall.IsEnabled = $any
     }
 
-    foreach ($categoryName in ($manifest.categories.PSObject.Properties.Name | Sort-Object)) {
+    $categoryNames = @($manifest.categories.PSObject.Properties.Name | Sort-Object)
+    $midpoint = [math]::Ceiling($categoryNames.Count / 2)
+    $idx = 0
+    foreach ($categoryName in $categoryNames) {
         $cat = $manifest.categories.$categoryName
 
         $expander = New-Object System.Windows.Controls.Expander
@@ -460,7 +470,10 @@ try {
         $catHeaderPanel = New-Object System.Windows.Controls.StackPanel
         $catHeaderPanel.Orientation = 'Horizontal'
         $catCheck = New-Object System.Windows.Controls.CheckBox
-        $catCheck.Content = "Select/Deselect All"
+        $catLbl = New-Object System.Windows.Controls.TextBlock
+        $catLbl.Text = "Select/Deselect All"
+        $catLbl.FontWeight = 'Bold'
+        $catCheck.Content = $catLbl
         $catCheck.Margin = '0,0,0,8'
         $catHeaderPanel.Children.Add($catCheck) | Out-Null
         $catPanel.Children.Add($catHeaderPanel) | Out-Null
@@ -576,8 +589,12 @@ try {
 
         $expander.Content = $catPanel
         $card.Child = $expander
-        $controls.CategoriesPanel.Children.Add($card) | Out-Null
+        # Place card by splitting the list into two equal columns (first half left, second half right)
+        $leftCol = $window.FindName('LeftColumn')
+        $rightCol = $window.FindName('RightColumn')
+        if ($idx -lt $midpoint) { $leftCol.Children.Add($card) | Out-Null } else { $rightCol.Children.Add($card) | Out-Null }
         $null = $categoryNodes.Add([pscustomobject]@{ Name=$categoryName; Expander=$expander; Panel=$catPanel; Card=$card })
+        $idx++
     }
 
     foreach ($c in $packageCheckBoxes) {
