@@ -35,7 +35,7 @@ function Start-AdminElevation {
     $psExe = (Get-Process -Id $PID).Path
     $argsList = @()
     # Preserve script and arguments
-    if ($MyInvocation.MyCommand.Path) {
+    if ($MyInvocation.MyCommand -and $MyInvocation.MyCommand.Path) {
         $argsList += '-ExecutionPolicy', 'Bypass', '-File', ("""{0}""" -f $MyInvocation.MyCommand.Path)
         $BoundParameters.GetEnumerator() | ForEach-Object {
             $k = $_.Key; $v = $_.Value
@@ -181,11 +181,58 @@ function Install-Package {
         if ($DryRun) {
             return [pscustomobject]@{ id=$Id; name=$Name; status='installed'; startedAt=$started.ToString('s'); durationMs=0; errorMessage=$null; dryRun=$true }
         }
+        # Non-blocking winget installation with timeout
+        $maxWaitTime = 300000 # 5 minutes default
+        if ($Id -match 'Spotify|Blender|VisualStudio|Docker|WinRAR|Notepad\+\+') {
+            $maxWaitTime = 600000 # 10 minutes for large packages
+        }
+        
         $wingetArgs = @('install','--id', $Id,'--accept-package-agreements','--accept-source-agreements','--silent')
-        $proc = Start-Process -FilePath 'winget' -ArgumentList $wingetArgs -Wait -PassThru -NoNewWindow
+        $psi = New-Object System.Diagnostics.ProcessStartInfo
+        $psi.FileName = 'winget'
+        $psi.Arguments = ($wingetArgs -join ' ')
+        $psi.UseShellExecute = $false
+        $psi.RedirectStandardOutput = $true
+        $psi.RedirectStandardError = $true
+        $psi.CreateNoWindow = $true
+        
+        $proc = New-Object System.Diagnostics.Process
+        $proc.StartInfo = $psi
+        $proc.Start() | Out-Null
+        
+        # Non-blocking wait with timeout
+        $startTime = Get-Date
+        while (-not $proc.HasExited) {
+            # Check for timeout
+            $elapsedMs = [int]((Get-Date) - $startTime).TotalMilliseconds
+            if ($elapsedMs -gt $maxWaitTime) {
+                # Timeout reached, kill the process
+                try {
+                    $proc.Kill()
+                    $proc.WaitForExit(5000)
+                } catch {
+                    try { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } catch {}
+                }
+                break
+            }
+            
+            # Update every 500ms to keep responsive
+            Start-Sleep -Milliseconds 500
+        }
+        
+        # Wait for process to exit completely
+        if (-not $proc.HasExited) {
+            $proc.WaitForExit(10000) # Wait up to 10 seconds
+        }
+        
         $exit = $proc.ExitCode
         $dur = [int]((Get-Date) - $started).TotalMilliseconds
-        if ($exit -eq 0) {
+        
+        # Check if process was killed due to timeout
+        if ($elapsedMs -gt $maxWaitTime) {
+            $timeoutMinutes = [math]::Round($maxWaitTime / 60000, 1)
+            return [pscustomobject]@{ id=$Id; name=$Name; status='failed'; startedAt=$started.ToString('s'); durationMs=$dur; errorMessage="Installation timeout ($timeoutMinutes minutes)" }
+        } elseif ($exit -eq 0) {
             return [pscustomobject]@{ id=$Id; name=$Name; status='installed'; startedAt=$started.ToString('s'); durationMs=$dur; errorMessage=$null }
         } else {
             return [pscustomobject]@{ id=$Id; name=$Name; status='failed'; startedAt=$started.ToString('s'); durationMs=$dur; errorMessage=("ExitCode {0}" -f $exit) }
@@ -257,15 +304,19 @@ try {
         Title="Onepunch-setup" Height="620" Width="900" WindowStartupLocation="CenterScreen" Background="{DynamicResource App.Background}" Foreground="{DynamicResource App.Text}">
     <Window.Resources>
         <!-- Theme brushes (DynamicResource for live toggle) -->
-        <!-- Light theme default -->
-        <SolidColorBrush x:Key="App.Background" Color="#F5F6F7" />
-        <SolidColorBrush x:Key="App.Card" Color="#FFFFFF" />
-        <SolidColorBrush x:Key="App.Border" Color="#E2E5E9" />
-        <SolidColorBrush x:Key="App.Text" Color="#11141A" />
-        <SolidColorBrush x:Key="App.MutedText" Color="#6B7280" />
-        <SolidColorBrush x:Key="App.Primary" Color="#2563EB" />
-        <SolidColorBrush x:Key="App.PrimaryHover" Color="#1D4ED8" />
-        <SolidColorBrush x:Key="App.PrimaryText" Color="#FFFFFF" />
+        <!-- Light theme default (Brand) -->
+        <SolidColorBrush x:Key="App.Background" Color="#FDCA56" />
+        <SolidColorBrush x:Key="App.Card" Color="#F5F5F5" />
+        <SolidColorBrush x:Key="App.Border" Color="#DB1E1F" />
+        <SolidColorBrush x:Key="App.Text" Color="#000000" />
+        <SolidColorBrush x:Key="App.MutedText" Color="#666666" />
+        <SolidColorBrush x:Key="App.Primary" Color="#FDCA56" />
+        <SolidColorBrush x:Key="App.PrimaryHover" Color="#F4C430" />
+        <SolidColorBrush x:Key="App.PrimaryText" Color="#000000" />
+        <!-- Secondary (Red) for Install button -->
+        <SolidColorBrush x:Key="App.Secondary" Color="#DB1E1F" />
+        <SolidColorBrush x:Key="App.SecondaryHover" Color="#C41E3A" />
+        <SolidColorBrush x:Key="App.SecondaryText" Color="#FFFFFF" />
 
         <!-- Button style -->
         <Style x:Key="PrimaryButton" TargetType="Button">
@@ -289,6 +340,30 @@ try {
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter Property="Background" Value="{DynamicResource App.PrimaryHover}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Install button: red with red hover (brand secondary) -->
+        <Style x:Key="InstallButton" TargetType="Button" BasedOn="{StaticResource PrimaryButton}">
+            <Setter Property="Background" Value="{DynamicResource App.Secondary}"/>
+            <Setter Property="Foreground" Value="{DynamicResource App.SecondaryText}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource App.Secondary}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.5"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="{DynamicResource App.SecondaryHover}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -400,14 +475,21 @@ try {
                 <ProgressBar x:Name="PrgItem" Width="120" Height="14" Minimum="0" Maximum="100" IsIndeterminate="False"/>
             </StatusBarItem>
         </StatusBar>
-        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="12" HorizontalAlignment="Right" >
-            <CheckBox x:Name="ChkDryRun" Content="Dry Run" Margin="0,0,16,0"/>
-            <CheckBox x:Name="ChkWSL" Content="Enable WSL" Margin="0,0,16,0"/>
-            <CheckBox x:Name="ChkReboot" Content="Auto Reboot" Margin="0,0,24,0"/>
-            <Button x:Name="BtnSelectAll" Content="Select All" Margin="0,0,8,0"/>
-            <Button x:Name="BtnDeselectAll" Content="Deselect All" Margin="0,0,24,0"/>
-            <Button x:Name="BtnInstall" Content="Install" Style="{StaticResource PrimaryButton}" IsEnabled="False" MinWidth="140" Padding="16,8" FontSize="14" FontWeight="Bold"/>
-        </StackPanel>
+        <Grid DockPanel.Dock="Bottom" Margin="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock x:Name="CreditText" Foreground="{DynamicResource App.Text}" VerticalAlignment="Center"/>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                <CheckBox x:Name="ChkDryRun" Content="Dry Run" Margin="0,0,16,0" VerticalAlignment="Center"/>
+                <CheckBox x:Name="ChkWSL" Content="Enable WSL" Margin="0,0,16,0" VerticalAlignment="Center"/>
+                <CheckBox x:Name="ChkReboot" Content="Auto Reboot" Margin="0,0,24,0" VerticalAlignment="Center"/>
+                <Button x:Name="BtnSelectAll" Content="Select All" Margin="0,0,8,0"/>
+                <Button x:Name="BtnDeselectAll" Content="Deselect All" Margin="0,0,24,0"/>
+                <Button x:Name="BtnInstall" Content="Install" Style="{StaticResource InstallButton}" IsEnabled="False" MinWidth="140" Padding="16,8" FontSize="14" FontWeight="Bold"/>
+            </StackPanel>
+        </Grid>
         <ScrollViewer x:Name="MainScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Background="{DynamicResource App.Background}">
             <StackPanel x:Name="CategoriesPanel" Margin="12"/>
         </ScrollViewer>
@@ -432,6 +514,7 @@ try {
     $window.FindName("PrgItem") | ForEach-Object { $controls.PrgItem = $_ }
     $window.FindName("ChkTheme") | ForEach-Object { $controls.ChkTheme = $_ }
     $window.FindName("MainScroll") | ForEach-Object { $controls.MainScroll = $_ }
+    $window.FindName("CreditText") | ForEach-Object { $controls.CreditText = $_ }
 
     # Initialize toggles with CLI values
     $controls.ChkDryRun.IsChecked = [bool]$DryRun
@@ -568,6 +651,17 @@ try {
     }
     & $updateInstallButton
 
+    # Set credit text with current year and hyperlink
+    try {
+        $year = (Get-Date).Year
+        $controls.CreditText.Inlines.Clear()
+        $hl = New-Object System.Windows.Documents.Hyperlink
+        $hl.NavigateUri = [Uri]"https://falker47.github.io/Nexus-portfolio/"
+        $hl.Inlines.Add((New-Object System.Windows.Documents.Run ("© $year Maurizio Falconi - falker47"))) | Out-Null
+        $null = $hl.Add_Click({ Start-Process "https://falker47.github.io/Nexus-portfolio/" })
+        $controls.CreditText.Inlines.Add($hl) | Out-Null
+    } catch { }
+
     # Live search filter
     $null = $controls.TxtSearch.Add_TextChanged({ param($sender,$e)
         $q = ($controls.TxtSearch.Text | ForEach-Object { $_.ToString() })
@@ -617,17 +711,31 @@ try {
             $null = $dict.Add($k, (New-Brush $hex))
         }
         if ($dark) {
+            # Dark theme (Brand)
             & $set 'App.Background' '#000000'
-            & $set 'App.Card'       '#1F2937'
-            & $set 'App.Border'     '#374151'
+            & $set 'App.Card'       '#333333'
+            & $set 'App.Border'     '#FDCA56'
             & $set 'App.Text'       '#FFFFFF'
-            & $set 'App.MutedText'  '#9CA3AF'
+            & $set 'App.MutedText'  '#999999'
+            & $set 'App.Primary'    '#FDCA56'
+            & $set 'App.PrimaryHover' '#F4C430'
+            & $set 'App.PrimaryText' '#000000'
+            & $set 'App.Secondary'  '#DB1E1F'
+            & $set 'App.SecondaryHover' '#C41E3A'
+            & $set 'App.SecondaryText' '#FFFFFF'
         } else {
-            & $set 'App.Background' '#F5F6F7'
-            & $set 'App.Card'       '#FFFFFF'
-            & $set 'App.Border'     '#E2E5E9'
-            & $set 'App.Text'       '#11141A'
-            & $set 'App.MutedText'  '#6B7280'
+            # Light theme (Brand): yellow background, whitesmoke card, red borders
+            & $set 'App.Background' '#FDCA56'
+            & $set 'App.Card'       '#F5F5F5'
+            & $set 'App.Border'     '#DB1E1F'
+            & $set 'App.Text'       '#000000'
+            & $set 'App.MutedText'  '#666666'
+            & $set 'App.Primary'    '#FDCA56'
+            & $set 'App.PrimaryHover' '#F4C430'
+            & $set 'App.PrimaryText' '#000000'
+            & $set 'App.Secondary'  '#DB1E1F'
+            & $set 'App.SecondaryHover' '#C41E3A'
+            & $set 'App.SecondaryText' '#FFFFFF'
         }
     }
 
@@ -859,7 +967,7 @@ try {
             try {
                 # Determine timeout based on package size/complexity
                 $maxWaitTime = 300000 # 5 minutes default
-                if ($pkg.id -match 'Spotify|Blender|VisualStudio|Docker') {
+                if ($pkg.id -match 'Spotify|Blender|VisualStudio|Docker|WinRAR|Notepad\+\+') {
                     $maxWaitTime = 600000 # 10 minutes for large packages
                 }
                 
