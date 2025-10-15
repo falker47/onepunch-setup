@@ -309,6 +309,7 @@ try {
             <Setter Property="CornerRadius" Value="8"/>
             <Setter Property="Padding" Value="8"/>
             <Setter Property="Margin" Value="0,0,0,12"/>
+            <Setter Property="VerticalAlignment" Value="Top"/>
         </Style>
 
         <!-- Expander header text style -->
@@ -370,7 +371,7 @@ try {
             </StackPanel>
         </Grid>
         <ScrollViewer x:Name="MainScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Background="{DynamicResource App.Background}">
-            <StackPanel x:Name="CategoriesPanel" Margin="12"/>
+            <WrapPanel x:Name="CategoriesPanel" Margin="12"/>
         </ScrollViewer>
     </DockPanel>
 </Window>
@@ -404,6 +405,23 @@ try {
     $packageCheckBoxes = New-Object System.Collections.Generic.List[System.Windows.Controls.CheckBox]
     $categoryNodes = New-Object System.Collections.Generic.List[object]
 
+    function Get-CategoryIcon([string]$name) {
+        switch -Regex ($name) {
+            'dev|code|program'      { return '🛠' }
+            'browser|web|internet'  { return '🌐' }
+            'media|audio|video'     { return '🎬' }
+            'design|image|photo'    { return '🎨' }
+            'security|antivirus'    { return '🔒' }
+            'gaming|game'           { return '🎮' }
+            'utility|utilities'     { return '💡' }
+            'system|tools'          { return '⚙️' }
+            'cloud|sync|drive'      { return '☁️' }
+            'chat|comm|mail'        { return '💬' }
+            'ai|ml|model'           { return '🤖' }
+            default                 { return '📦' }
+        }
+    }
+
     # Helper to enable/disable Install
     $updateInstallButton = {
         $any = $false
@@ -415,13 +433,22 @@ try {
         $cat = $manifest.categories.$categoryName
 
         $expander = New-Object System.Windows.Controls.Expander
+        $headerPanel = New-Object System.Windows.Controls.StackPanel
+        $headerPanel.Orientation = 'Horizontal'
+        $iconBlock = New-Object System.Windows.Controls.TextBlock
+        $iconBlock.Text = (Get-CategoryIcon $categoryName)
+        $iconBlock.FontSize = 18
+        $iconBlock.Margin = '0,0,8,0'
+        $iconBlock.SetResourceReference([System.Windows.Controls.TextBlock]::ForegroundProperty, 'App.Text')
         $hdrText = New-Object System.Windows.Controls.TextBlock
         $hdrText.Text = $categoryName
         $hdrText.FontSize = 18
         $hdrText.FontWeight = 'Bold'
         $hdrText.SetResourceReference([System.Windows.Controls.TextBlock]::ForegroundProperty, 'App.Text')
-        $expander.Header = $hdrText
-        $expander.IsExpanded = $true
+        $headerPanel.Children.Add($iconBlock) | Out-Null
+        $headerPanel.Children.Add($hdrText) | Out-Null
+        $expander.Header = $headerPanel
+        $expander.IsExpanded = $false
         $expander.Margin = '0,0,0,8'
         
         $card = New-Object System.Windows.Controls.Border
@@ -441,11 +468,42 @@ try {
         foreach ($pkg in $cat.packages) {
             $chk = New-Object System.Windows.Controls.CheckBox
             $display = if ($pkg.id) { "$($pkg.name)  ($($pkg.id))" } else { $pkg.name }
-            $textBlock = New-Object System.Windows.Controls.TextBlock
-            $textBlock.Text = $display
-            $textBlock.TextWrapping = 'Wrap'
-            $textBlock.TextTrimming = 'CharacterEllipsis'
-            $chk.Content = $textBlock
+            $nameText = New-Object System.Windows.Controls.TextBlock
+            $nameText.Text = $display
+            $nameText.TextWrapping = 'Wrap'
+            $nameText.TextTrimming = 'CharacterEllipsis'
+
+            # Row with badge indicating install type
+            $row = New-Object System.Windows.Controls.StackPanel
+            $row.Orientation = 'Horizontal'
+            $row.Children.Add($nameText) | Out-Null
+
+            $isManual = $false
+            if ($null -ne $pkg.PSObject.Properties['manual']) { $isManual = [bool]$pkg.manual }
+            $badge = New-Object System.Windows.Controls.Border
+            $badge.CornerRadius = '12'
+            $badge.Padding = '6,2'
+            $badge.Margin = '8,0,0,0'
+            if ($isManual) {
+                $badge.Background = $window.Resources['App.Secondary']
+                $badge.BorderBrush = $window.Resources['App.Secondary']
+                $badge.BorderThickness = '1'
+                $badgeLabel = New-Object System.Windows.Controls.TextBlock
+                $badgeLabel.Text = 'Download only'
+                $badgeLabel.Foreground = $window.Resources['App.SecondaryText']
+                $badge.Child = $badgeLabel
+            } else {
+                $badge.Background = $window.Resources['App.Card']
+                $badge.BorderBrush = $window.Resources['App.Border']
+                $badge.BorderThickness = '1'
+                $badgeLabel = New-Object System.Windows.Controls.TextBlock
+                $badgeLabel.Text = 'Install'
+                $badgeLabel.Foreground = $window.Resources['App.Text']
+                $badge.Child = $badgeLabel
+            }
+            $row.Children.Add($badge) | Out-Null
+
+            $chk.Content = $row
             if ($pkg.description) { $chk.ToolTip = $pkg.description }
             $chk.Tag = [pscustomobject]@{ Pkg=$pkg; Master=$catCheck; Panel=$catPanel }
             $chk.IsChecked = [bool]$pkg.selected
@@ -547,12 +605,17 @@ try {
             $anyVisible = $false
             foreach ($child in $node.Panel.Children) {
                 if ($child -is [System.Windows.Controls.CheckBox] -and $child -ne $node.Panel.Children[0].Children[0]) {
-                    # Get text from TextBlock content properly
-                    $textBlock = $child.Content
-                    if ($textBlock -is [System.Windows.Controls.TextBlock]) {
-                        $text = $textBlock.Text
+                    # Extract display text from TextBlock or first TextBlock in a row panel
+                    $content = $child.Content
+                    if ($content -is [System.Windows.Controls.TextBlock]) {
+                        $text = $content.Text
+                    } elseif ($content -is [System.Windows.Controls.Panel]) {
+                        $text = ''
+                        foreach ($c2 in $content.Children) {
+                            if ($c2 -is [System.Windows.Controls.TextBlock]) { $text = $c2.Text; break }
+                        }
                     } else {
-                        $text = [string]$textBlock
+                        $text = [string]$content
                     }
                     $match = ($q -eq '' -or $text.ToLowerInvariant().Contains($q))
                     $child.Visibility = if ($match) { 'Visible' } else { 'Collapsed' }
@@ -640,13 +703,28 @@ try {
         $vw = [int]$controls.MainScroll.ViewportWidth
         if ($vw -le 0) { return }
         $panelWidth = [math]::Max(200, $vw - 16)
-        $controls.CategoriesPanel.Width = $panelWidth
+        # Two cards per row: compute width accounting for margins and scrollbar
+        $sideMargin = 12
+        $gap = 12
+        $scrollbarAllowance = 20
+        $availablePerItem = [int](($vw - (2*$sideMargin) - $scrollbarAllowance) / 2)
+        $itemWidth = [math]::Max(260 + $gap, $availablePerItem)
+        $cardWidth = $itemWidth - $gap
+        if ($controls.CategoriesPanel -is [System.Windows.Controls.WrapPanel]) {
+            $controls.CategoriesPanel.ItemWidth = $itemWidth
+        }
         foreach ($node in $categoryNodes) {
-            if ($node.Card) { $node.Card.Width = [math]::Max(200, $vw - 24) }
+            if ($node.Card) { $node.Card.Width = $cardWidth; $node.Card.HorizontalAlignment = 'Left' }
         }
         foreach ($c in $packageCheckBoxes) {
-            if ($c.Content -is [System.Windows.Controls.TextBlock]) {
-                ($c.Content).MaxWidth = [math]::Max(200, $vw - 80)
+            $content = $c.Content
+            $maxTextWidth = [math]::Max(140, $cardWidth - 80)
+            if ($content -is [System.Windows.Controls.TextBlock]) {
+                $content.MaxWidth = $maxTextWidth
+            } elseif ($content -is [System.Windows.Controls.Panel]) {
+                foreach ($child in $content.Children) {
+                    if ($child -is [System.Windows.Controls.TextBlock]) { $child.MaxWidth = $maxTextWidth; break }
+                }
             }
         }
     }
