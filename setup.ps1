@@ -1,4 +1,4 @@
-<#
+﻿<#
 Onepunch-setup - Main GUI installer
 WPF GUI in PowerShell to select categories and install apps via winget.
 Uses brand theming, two-column layout, search, and logs a JSON summary.
@@ -9,7 +9,8 @@ param(
     [switch]$EnableWSL,
     [switch]$AutoReboot,
     [string]$PackagesUrl,
-    [string]$LogDir
+    [string]$LogDir,
+    [switch]$ForceDownloadOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -96,6 +97,9 @@ function Get-Manifest {
     # 0) Embedded manifest (if present)
     if ($EmbeddedManifestBase64 -and $EmbeddedManifestBase64 -notlike '<#*#>') {
         try {
+            if ($ForceDownloadOnly) {
+                & $doDownloadOnly; return
+            }
             $bytes = [Convert]::FromBase64String($EmbeddedManifestBase64)
             $raw = [System.Text.Encoding]::UTF8.GetString($bytes)
             return $raw | ConvertFrom-Json
@@ -926,6 +930,130 @@ try {
                 if ($progressWindow.Resources.Contains($k)) { $null = $progressWindow.Resources.Remove($k) }
                 $null = $progressWindow.Resources.Add($k, $window.Resources[$k])
             }
+        }
+
+        # Pre-step: winget availability check row
+        $wgGrid = New-Object System.Windows.Controls.Grid
+        $wgGrid.Margin = '0,6,0,6'
+        $wgGrid.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width='*' })) | Out-Null
+        $wgGrid.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width='150' })) | Out-Null
+        $wgGrid.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width='50' })) | Out-Null
+        $wgGrid.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width='40' })) | Out-Null
+
+        $wgLbl = New-Object System.Windows.Controls.TextBlock
+        $wgLbl.Text = 'Winget check'
+        $wgLbl.Foreground = $progressWindow.Resources['App.Text']
+        [System.Windows.Controls.Grid]::SetColumn($wgLbl,0)
+
+        $wgPb = New-Object System.Windows.Controls.ProgressBar
+        $wgPb.Minimum = 0; $wgPb.Maximum = 100; $wgPb.Height = 14; $wgPb.Margin = '8,0,4,0'
+        [System.Windows.Controls.Grid]::SetColumn($wgPb,1)
+
+        $wgPct = New-Object System.Windows.Controls.TextBlock
+        $wgPct.Text = ''
+        $wgPct.HorizontalAlignment = 'Center'
+        $wgPct.VerticalAlignment = 'Center'
+        $wgPct.FontSize = 11
+        $wgPct.Foreground = $progressWindow.Resources['App.Text']
+        [System.Windows.Controls.Grid]::SetColumn($wgPct,2)
+
+        $wgIco = New-Object System.Windows.Controls.TextBlock
+        $wgIco.Text = '⏳'
+        $wgIco.HorizontalAlignment = 'Center'
+        $wgIco.Foreground = $progressWindow.Resources['App.Text']
+        [System.Windows.Controls.Grid]::SetColumn($wgIco,3)
+
+        $wgGrid.Children.Add($wgLbl) | Out-Null
+        $wgGrid.Children.Add($wgPb) | Out-Null
+        $wgGrid.Children.Add($wgPct) | Out-Null
+        $wgGrid.Children.Add($wgIco) | Out-Null
+        $rowsPanel.Children.Add($wgGrid) | Out-Null
+
+        $doDownloadOnly = {
+            foreach ($pkg in $selectedPackages) {
+                # Row per package (minimal)
+                $g = New-Object System.Windows.Controls.Grid
+                $g.Margin = '0,6,0,6'
+                $g.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width='*' })) | Out-Null
+                $g.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width='150' })) | Out-Null
+                $g.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width='50' })) | Out-Null
+                $g.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width='40' })) | Out-Null
+
+                $t = New-Object System.Windows.Controls.TextBlock
+                $t.Text = [string]$pkg.name
+                $t.Foreground = $progressWindow.Resources['App.Text']
+                [System.Windows.Controls.Grid]::SetColumn($t,0)
+
+                $pbi = New-Object System.Windows.Controls.ProgressBar
+                $pbi.Minimum = 0; $pbi.Maximum = 100; $pbi.Height = 14; $pbi.Margin = '8,0,4,0'
+                $pbi.Value = 100
+                [System.Windows.Controls.Grid]::SetColumn($pbi,1)
+
+                $pct = New-Object System.Windows.Controls.TextBlock
+                $pct.Text = '100%'
+                $pct.HorizontalAlignment = 'Center'
+                $pct.VerticalAlignment = 'Center'
+                $pct.FontSize = 11
+                $pct.Foreground = $progressWindow.Resources['App.Text']
+                [System.Windows.Controls.Grid]::SetColumn($pct,2)
+
+                $ico = New-Object System.Windows.Controls.TextBlock
+                $ico.Text = '📝'
+                $ico.HorizontalAlignment = 'Center'
+                $ico.Foreground = $progressWindow.Resources['App.Text']
+                [System.Windows.Controls.Grid]::SetColumn($ico,3)
+
+                $g.Children.Add($t) | Out-Null
+                $g.Children.Add($pbi) | Out-Null
+                $g.Children.Add($pct) | Out-Null
+                $g.Children.Add($ico) | Out-Null
+                $rowsPanel.Children.Add($g) | Out-Null
+
+                # Open URL: manual url if present, otherwise a search query
+                try {
+                    if ($null -ne $pkg.PSObject.Properties['downloadUrl'] -and $pkg.downloadUrl) {
+                        Start-Process ([string]$pkg.downloadUrl) | Out-Null
+                    } elseif ($null -ne $pkg.PSObject.Properties['manual'] -and [bool]$pkg.manual -and $pkg.url) {
+                        Start-Process $pkg.url | Out-Null
+                    } else {
+                        $q = [Uri]::EscapeDataString('download ' + [string]$pkg.name)
+                        Start-Process ("https://www.bing.com/search?q=$q") | Out-Null
+                    }
+                } catch { }
+
+                $progressWindow.Dispatcher.Invoke({}, 'Background')
+            }
+        }
+
+        # Perform winget check (non-interactive)
+        try {
+            $psiWG = New-Object System.Diagnostics.ProcessStartInfo
+            $psiWG.FileName = 'winget'
+            $psiWG.Arguments = '--info'
+            $psiWG.UseShellExecute = $false
+            $psiWG.RedirectStandardOutput = $true
+            $psiWG.RedirectStandardError = $true
+            $psiWG.CreateNoWindow = $true
+            $pWG = New-Object System.Diagnostics.Process
+            $pWG.StartInfo = $psiWG
+            $null = $pWG.Start()
+            $null = $pWG.WaitForExit(15000)
+            if (-not $pWG.HasExited) { try { $pWG.Kill() } catch {} }
+            if ($pWG.ExitCode -eq 0) {
+                $wgPb.IsIndeterminate = $false; $wgPb.Value = 100; $wgPct.Text = 'OK'; $wgIco.Text = '✅'
+            } else {
+                $wgPb.IsIndeterminate = $false; $wgPb.Value = 0; $wgPct.Text = 'ERR'; $wgIco.Text = '❌'
+                $res = [System.Windows.MessageBox]::Show("Winget non disponibile o non funzionante. Scegli un'azione:`n`nYes = Apri App Installer nello Store`nNo = Procedi con 'Download only' per le app selezionate`nCancel = Annulla", 'Winget richiesto', 'YesNoCancel', 'Warning')
+                if ($res -eq 'Yes') { try { Start-Process "ms-windows-store://pdp/?productid=9NBLGGH4NNS1" } catch { } ; return }
+                elseif ($res -eq 'No') { & $doDownloadOnly; return }
+                else { return }
+            }
+        } catch {
+            $wgPb.IsIndeterminate = $false; $wgPb.Value = 0; $wgPct.Text = 'ERR'; $wgIco.Text = '❌'
+            $res2 = [System.Windows.MessageBox]::Show("Winget non disponibile. Scegli un'azione:`n`nYes = Apri App Installer nello Store`nNo = Procedi con 'Download only' per le app selezionate`nCancel = Annulla", 'Winget richiesto', 'YesNoCancel', 'Warning')
+            if ($res2 -eq 'Yes') { try { Start-Process "ms-windows-store://pdp/?productid=9NBLGGH4NNS1" } catch { } ; return }
+            elseif ($res2 -eq 'No') { & $doDownloadOnly; return }
+            else { return }
         }
 
         $rowControls = @()

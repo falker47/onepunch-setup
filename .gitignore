@@ -2,9 +2,6 @@
 logs/
 *.log
 
-# EXE files
-*.exe
-
 # PowerShell execution policy
 *.ps1.bak
 

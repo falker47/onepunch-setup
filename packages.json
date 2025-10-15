@@ -3,70 +3,70 @@
     "Browser": {
       "description": "Scegli un browser (si consiglia di installarne solo uno)",
       "packages": [
-        { "name": "Brave Browser", "id": "BraveSoftware.BraveBrowser", "selected": false },
-        { "name": "Google Chrome", "id": "Google.Chrome", "selected": false },
-        { "name": "Mozilla Firefox", "id": "Mozilla.Firefox", "selected": false }
+        { "name": "Brave Browser", "id": "BraveSoftware.BraveBrowser", "selected": false, "downloadUrl": "https://laptop-updates.brave.com/latest/win64" },
+        { "name": "Google Chrome", "id": "Google.Chrome", "selected": false, "downloadUrl": "https://dl.google.com/dl/chrome/install/googlechromestandaloneenterprise64.msi" },
+        { "name": "Mozilla Firefox", "id": "Mozilla.Firefox", "selected": false, "downloadUrl": "https://download.mozilla.org/?product=firefox-latest&os=win64&lang=en-US" }
       ]
     },
     "Basics": {
       "description": "Strumenti essenziali per tutti",
       "packages": [
-        { "name": "7-Zip", "id": "7zip.7zip", "selected": false },
-        { "name": "VLC Media Player", "id": "VideoLAN.VLC", "selected": false },
-        { "name": "Notepad++", "id": "Notepad++.Notepad++", "selected": false },
-        { "name": "Revo Uninstaller", "id": "RevoUninstaller.RevoUninstaller", "selected": false },
-        { "name": "LibreOffice", "id": "TheDocumentFoundation.LibreOffice", "selected": false },
-        { "name": "WinRAR", "id": "RARLab.WinRAR", "selected": false }
+        { "name": "7-Zip", "id": "7zip.7zip", "selected": false, "downloadUrl": "https://www.7-zip.org/a/7z2408-x64.exe" },
+        { "name": "VLC Media Player", "id": "VideoLAN.VLC", "selected": false, "downloadUrl": "https://get.videolan.org/vlc/last/win64/vlc-3.0.20-win64.exe" },
+        { "name": "Notepad++", "id": "Notepad++.Notepad++", "selected": false, "downloadUrl": "https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.8.6/npp.8.8.6.Installer.x64.exe" },
+        { "name": "Revo Uninstaller", "id": "RevoUninstaller.RevoUninstaller", "selected": false, "downloadUrl": "https://download.revouninstaller.com/download/revosetup.exe" },
+        { "name": "LibreOffice", "id": "TheDocumentFoundation.LibreOffice", "selected": false, "downloadUrl": "https://download.documentfoundation.org/libreoffice/stable/7.6.7/win/x86_64/LibreOffice_7.6.7_Win_x86-64.msi" },
+        { "name": "WinRAR", "id": "RARLab.WinRAR", "selected": false, "downloadUrl": "https://www.rarlab.com/rar/winrar-x64-701.exe" }
       ]
     },
     "Utilities": {
       "description": "Utilità di sistema e produttività",
       "packages": [
-        { "name": "ShareX", "id": "ShareX.ShareX", "selected": false },
-        { "name": "WizTree", "id": "AntibodySoftware.WizTree", "selected": false },
-        { "name": "PowerToys", "id": "Microsoft.PowerToys", "selected": false },
-        { "name": "Patch My PC", "id": "PatchMyPC.PatchMyPC", "selected": false },
-        { "name": "Everything", "id": "voidtools.Everything", "selected": false },
-        { "name": "Espanso", "id": "Espanso.Espanso", "selected": false },
-        { "name": "pCloud", "id": "pCloudAG.pCloudDrive", "selected": false }
+        { "name": "ShareX", "id": "ShareX.ShareX", "selected": false, "downloadUrl": "https://github.com/ShareX/ShareX/releases/download/v18.0.1/ShareX-18.0.1-setup.exe" },
+        { "name": "WizTree", "id": "AntibodySoftware.WizTree", "selected": false, "downloadUrl": "https://diskanalyzer.com/files/wiztree_4_22_setup.exe" },
+        { "name": "PowerToys", "id": "Microsoft.PowerToys", "selected": false, "downloadUrl": "https://github.com/microsoft/PowerToys/releases/download/v0.94.2/PowerToysUserSetup-0.94.2-x64.exe" },
+        { "name": "Patch My PC", "id": "PatchMyPC.PatchMyPC", "selected": false, "downloadUrl": "https://patchmypc.com/freeupdater/PatchMyPC.exe" },
+        { "name": "Everything", "id": "voidtools.Everything", "selected": false, "downloadUrl": "https://www.voidtools.com/Everything-1.4.1.1023.x64-Setup.exe" },
+        { "name": "Espanso", "id": "Espanso.Espanso", "selected": false, "downloadUrl": "https://github.com/espanso/espanso/releases/latest/download/Espanso-Win-Installer-x86_64.exe" },
+        { "name": "pCloud", "id": "pCloudAG.pCloudDrive", "selected": false, "downloadUrl": "https://static.pcloud.com/pcloudDrive/pcloud-drive-latest.exe" }
       ]
     },
     "Communication": {
       "description": "App di comunicazione e messaggistica",
       "packages": [
-        { "name": "WhatsApp", "id": "WhatsApp.WhatsApp", "selected": false },
-        { "name": "Telegram", "id": "Telegram.TelegramDesktop", "selected": false },
-        { "name": "Discord", "id": "Discord.Discord", "selected": false },
-        { "name": "Zoom", "id": "Zoom.Zoom", "selected": false }
+        { "name": "WhatsApp", "id": "WhatsApp.WhatsApp", "selected": false, "downloadUrl": "https://web.whatsapp.com/desktop/windows/release/x64/WhatsAppSetup.exe" },
+        { "name": "Telegram", "id": "Telegram.TelegramDesktop", "selected": false, "downloadUrl": "https://telegram.org/dl/desktop/win64" },
+        { "name": "Discord", "id": "Discord.Discord", "selected": false, "downloadUrl": "https://discord.com/api/download?platform=win" },
+        { "name": "Zoom", "id": "Zoom.Zoom", "selected": false, "downloadUrl": "https://zoom.us/client/latest/ZoomInstallerFull.msi" }
       ]
     },
     "Dev": {
       "description": "Ambiente di sviluppo",
       "packages": [
-        { "name": "Visual Studio Code", "id": "Microsoft.VisualStudioCode", "selected": false },
-        { "name": "Git", "id": "Git.Git", "selected": false },
-        { "name": "Python 3", "id": "Python.Python.3.12", "selected": false },
-        { "name": "Node.js LTS", "id": "OpenJS.NodeJS.LTS", "selected": false },
-        { "name": "Docker Desktop", "id": "Docker.DockerDesktop", "selected": false },
-        { "name": "Postman", "id": "Postman.Postman", "selected": false },
-        { "name": "Cursor", "manual": true, "url": "https://api2.cursor.sh/updates/download/golden/win32-x64/cursor/1.7", "selected": false }
+        { "name": "Visual Studio Code", "id": "Microsoft.VisualStudioCode", "selected": false, "downloadUrl": "https://code.visualstudio.com/sha/download?build=stable&os=win32-x64-user" },
+        { "name": "Git", "id": "Git.Git", "selected": false, "downloadUrl": "https://github.com/git-for-windows/git/releases/download/v2.51.0.windows.2/Git-2.51.0.2-64-bit.exe" },
+        { "name": "Python 3", "id": "Python.Python.3.12", "selected": false, "downloadUrl": "https://www.python.org/ftp/python/3.12.6/python-3.12.6-amd64.exe" },
+        { "name": "Node.js LTS", "id": "OpenJS.NodeJS.LTS", "selected": false, "downloadUrl": "https://nodejs.org/dist/v20.18.0/node-v20.18.0-x64.msi" },
+        { "name": "Docker Desktop", "id": "Docker.DockerDesktop", "selected": false, "downloadUrl": "https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe" },
+        { "name": "Postman", "id": "Postman.Postman", "selected": false, "downloadUrl": "https://dl.pstmn.io/download/latest/win64" },
+        { "name": "Cursor", "manual": true, "url": "https://api2.cursor.sh/updates/download/golden/win32-x64/cursor/", "selected": false }
       ]
     },
     "Gaming": {
       "description": "Programmi per il gaming",
       "packages": [
-        { "name": "Steam", "id": "Valve.Steam", "selected": false },
-        { "name": "Epic Games Launcher", "id": "EpicGames.EpicGamesLauncher", "selected": false },
-        { "name": "Vortex", "id": "NexusMods.Vortex", "selected": false }
+        { "name": "Steam", "id": "Valve.Steam", "selected": false, "downloadUrl": "https://cdn.cloudflare.steamstatic.com/client/installer/SteamSetup.exe" },
+        { "name": "Epic Games Launcher", "id": "EpicGames.EpicGamesLauncher", "selected": false, "downloadUrl": "https://launcher-public-service-prod06.ol.epicgames.com/launcher/api/installer/download/EpicGamesLauncherInstaller.msi" },
+        { "name": "Vortex", "id": "NexusMods.Vortex", "selected": false, "downloadUrl": "https://www.nexusmods.com/Core/Libs/Common/Widgets/DownloadPopUp?id=5911&game_id=2295" }
       ]
     },
     "Media": {
       "description": "Creazione e editing multimediale",
       "packages": [
         { "name": "GIMP", "manual": true, "url": "https://download.gimp.org/gimp/v3.0/windows/gimp-3.0.6-setup-1.exe", "selected": false },
-        { "name": "OBS Studio", "id": "OBSProject.OBSStudio", "selected": false },
-        { "name": "Audacity", "id": "Audacity.Audacity", "selected": false },
-        { "name": "Blender", "id": "BlenderFoundation.Blender", "selected": false }
+        { "name": "OBS Studio", "id": "OBSProject.OBSStudio", "selected": false, "downloadUrl": "https://cdn-fastly.obsproject.com/downloads/OBS-Studio-32.0.1-Windows-x64-Installer.exe" },
+        { "name": "Audacity", "id": "Audacity.Audacity", "selected": false, "downloadUrl": "https://muse-cdn.com/Audacity_Installer_via_MuseHub.exe" },
+        { "name": "Blender", "id": "BlenderFoundation.Blender", "selected": false, "downloadUrl": "https://download.blender.org/release/Blender4.1/blender-4.1.1-windows-x64.msi" }
       ]
     }
   }
