@@ -43,6 +43,9 @@ if (Test-Path $iconSrc) {
 # Copy runner CMD to root of dist
 Copy-Item (Join-Path $root 'build-and-run.cmd') -Destination (Join-Path $distDir 'build-and-run.cmd') -Force
 
+# Copy packages.json to root so the compiled EXE finds it locally (otherwise it falls back to GitHub)
+Copy-Item (Join-Path $root 'packages.json') -Destination (Join-Path $distDir 'packages.json') -Force
+
 # Create instructions file in root of dist
 $instructions = @"
 Onepunch-setup - Istruzioni

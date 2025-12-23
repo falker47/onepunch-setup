@@ -49,7 +49,8 @@
         { "name": "Node.js LTS", "id": "OpenJS.NodeJS.LTS", "selected": false, "downloadUrl": "https://nodejs.org/dist/v20.18.0/node-v20.18.0-x64.msi" },
         { "name": "Docker Desktop", "id": "Docker.DockerDesktop", "selected": false, "downloadUrl": "https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe" },
         { "name": "Postman", "id": "Postman.Postman", "selected": false, "downloadUrl": "https://dl.pstmn.io/download/latest/win64" },
-        { "name": "Cursor", "manual": true, "url": "https://api2.cursor.sh/updates/download/golden/win32-x64/cursor/", "selected": false }
+        { "name": "Cursor", "manual": true, "url": "https://api2.cursor.sh/updates/download/golden/win32-x64/cursor/", "selected": false },
+        { "name": "Google Antigravity", "manual": true, "url": "https://edgedl.me.gvt1.com/edgedl/release2/j0qc3/antigravity/stable/1.13.3-4533425205018624/windows-x64/Antigravity.exe", "selected": false }
       ]
     },
     "Gaming": {
