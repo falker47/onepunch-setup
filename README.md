@@ -1,5 +1,11 @@
 # Onepunch-setup (Windows One‑Click Setup)
 
+> **Retired standalone project.** The useful Windows Setup concept has moved to [ZEROfilez](https://github.com/falker47/ZEROfilez), where PC Programs can be selected to generate a local, inspectable PowerShell script based on verified `winget` package IDs.
+>
+> This repository is preserved as historical source. The replacement does not carry forward the WPF application, WSL/reboot controls, auto-elevation, EXE packaging, complex logging, or direct-download execution fallbacks.
+
+---
+
 A Windows "one-click setup" tool that allows users to select categories and applications from a WPF GUI and install them via **winget**. The catalog is defined in `packages.json` (searched locally first, then falls back to a remote URL). It provides detailed logs and a final JSON summary of the installation process.
 
 ## Requirements
