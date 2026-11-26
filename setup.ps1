@@ -741,9 +741,9 @@ try {
         $year = (Get-Date).Year
         $controls.CreditText.Inlines.Clear()
         $hl = New-Object System.Windows.Documents.Hyperlink
-        $hl.NavigateUri = [Uri]"https://falker47.github.io/Nexus-portfolio/"
+        $hl.NavigateUri = [Uri]"https://falker47.github.io/"
         $hl.Inlines.Add((New-Object System.Windows.Documents.Run ("© $year Maurizio Falconi - falker47"))) | Out-Null
-        $null = $hl.Add_Click({ Start-Process "https://falker47.github.io/Nexus-portfolio/" })
+        $null = $hl.Add_Click({ Start-Process "https://falker47.github.io/" })
         $controls.CreditText.Inlines.Add($hl) | Out-Null
     } catch { }
 
